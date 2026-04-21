@@ -1,8 +1,11 @@
 import { LoginForm } from "@/components/login-form";
 import { Badge } from "@/components/ui/badge";
-import type { PageProps } from "next";
 
-type LoginPageProps = PageProps<"/login">;
+type LoginPageProps = {
+  searchParams?: Promise<{
+    callbackUrl?: string | string[];
+  }>;
+};
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
