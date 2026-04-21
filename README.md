@@ -55,14 +55,13 @@ When code is pushed to `main`, it will:
 - `VPS_USER`: SSH user
 - `VPS_SSH_KEY`: private key (PEM/OpenSSH format)
 - `VPS_PORT`: SSH port (usually `22`)
-- `VPS_APP_DIR`: absolute path deployment dir on VPS (example: `/opt/rockpit`)
 
 #### One-time setup on VPS
 
 ```bash
-mkdir -p /opt/rockpit
-cp .env.example /opt/rockpit/.env.production
-# edit /opt/rockpit/.env.production with production values
+mkdir -p /root/rockpit
+cp .env.example /root/rockpit/.env.production
+# edit /root/rockpit/.env.production with production values
 ```
 
 #### Production env notes (`.env.production`)
@@ -80,6 +79,6 @@ DATABASE_URL="postgresql://<user>:<password>@host.docker.internal:5432/personal_
 Run this after the container is up (first deploy and every schema change):
 
 ```bash
-cd /opt/rockpit
+cd /root/rockpit
 docker compose -f docker-compose.prod.yml exec rockpit npx prisma migrate deploy
 ```
