@@ -45,9 +45,9 @@ When code is pushed to `main`, it will:
 
 1. Install dependencies
 2. Run lint and build
-3. SSH into VPS
-4. Pull latest `main`
-5. Run `docker compose -f docker-compose.prod.yml up -d --build`
+3. Build Docker image
+4. Push image to GHCR
+5. SSH into VPS and deploy with Docker Compose (`pull` + `up -d`)
 
 #### Required GitHub Secrets
 
@@ -55,17 +55,14 @@ When code is pushed to `main`, it will:
 - `VPS_USER`: SSH user
 - `VPS_SSH_KEY`: private key (PEM/OpenSSH format)
 - `VPS_PORT`: SSH port (usually `22`)
-- `VPS_APP_DIR`: absolute path repo on VPS (example: `/opt/rockpit`)
+- `VPS_APP_DIR`: absolute path deployment dir on VPS (example: `/opt/rockpit`)
 
 #### One-time setup on VPS
 
 ```bash
 mkdir -p /opt/rockpit
-git clone https://github.com/Moonlight-Technology/rockpit.git /opt/rockpit
-cd /opt/rockpit
-cp .env.example .env.production
-# edit .env.production with production values
-docker compose -f docker-compose.prod.yml up -d --build
+cp .env.example /opt/rockpit/.env.production
+# edit /opt/rockpit/.env.production with production values
 ```
 
 #### Production env notes (`.env.production`)
