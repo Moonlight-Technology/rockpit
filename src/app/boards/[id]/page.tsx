@@ -13,7 +13,7 @@ import {
   min as minDate,
   startOfWeek,
 } from "date-fns";
-import { ArrowLeft, CalendarDays, Pencil, Plus, Settings, UserPlus } from "lucide-react";
+import { ArrowLeft, CalendarDays, Pencil, Plus, Settings, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -150,6 +150,7 @@ export default function BoardDetailPage() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSettingsDueDatePicker, setShowSettingsDueDatePicker] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [showBoardMembers, setShowBoardMembers] = useState(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
@@ -416,6 +417,30 @@ export default function BoardDetailPage() {
     await fetchBoard();
   };
 
+  const deleteCardTask = async () => {
+    if (!cardEditForm || saving) return;
+
+    const confirmed = window.confirm("Delete this card? This action cannot be undone.");
+    if (!confirmed) return;
+
+    setCardEditError(null);
+    setSaving(true);
+    const response = await fetch(`/api/tasks/${cardEditForm.taskId}`, {
+      method: "DELETE",
+    });
+    setSaving(false);
+
+    if (!response.ok) {
+      setCardEditError("Failed to delete task.");
+      return;
+    }
+
+    setShowCardModal(false);
+    setShowCardDueDatePicker(false);
+    setCardEditForm(null);
+    await fetchBoard();
+  };
+
   const saveBoardSettings = async () => {
     setSettingsError(null);
     if (!settingsForm.title.trim() || !settingsForm.description.trim()) {
@@ -508,6 +533,14 @@ export default function BoardDetailPage() {
             <Button
               variant="outline"
               size="sm"
+              onClick={() => setShowBoardMembers((prev) => !prev)}
+            >
+              <Users data-icon="inline-start" />
+              {showBoardMembers ? "Hide Members" : "Show Members"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => {
                 setInviteError(null);
                 setInviteSuccess(null);
@@ -540,6 +573,32 @@ export default function BoardDetailPage() {
             ))}
           </div>
         </div>
+
+        {showBoardMembers ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {members.map((member) => {
+              const initials = member.name
+                .split(" ")
+                .map((part) => part.charAt(0))
+                .join("")
+                .slice(0, 2)
+                .toUpperCase();
+
+              return (
+                <div
+                  key={member.id}
+                  title={`${member.name} (${member.email})`}
+                  className="flex items-center gap-2 rounded-full border bg-background px-2 py-1"
+                >
+                  <span className="grid size-7 place-items-center rounded-full bg-muted text-xs font-semibold">
+                    {initials || "U"}
+                  </span>
+                  <span className="hidden text-xs text-muted-foreground sm:inline">{member.name}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
 
         <Tabs defaultValue="board" className="w-full gap-4">
           <TabsList className="inline-flex w-fit">
@@ -1092,7 +1151,11 @@ export default function BoardDetailPage() {
                 ))}
               </select>
               {cardEditError ? <p className="text-sm text-destructive">{cardEditError}</p> : null}
-              <div className="mt-1 flex justify-end gap-2">
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <Button variant="destructive" onClick={deleteCardTask} disabled={saving}>
+                  {saving ? "Deleting..." : "Delete"}
+                </Button>
+                <div className="flex gap-2">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -1106,6 +1169,7 @@ export default function BoardDetailPage() {
                 <Button onClick={saveCardEdit} disabled={saving}>
                   {saving ? "Saving..." : "Save"}
                 </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
