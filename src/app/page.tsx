@@ -571,8 +571,8 @@ export default function Home() {
                 className="w-full gap-4"
               >
                 <TabsList className="inline-flex w-fit">
-                  <TabsTrigger value="board">Board</TabsTrigger>
                   <TabsTrigger value="tasks">Tasks</TabsTrigger>
+                  <TabsTrigger value="board">Board</TabsTrigger>
                 </TabsList>
                 <TabsContent value="board" className="pt-4">
                   {boardsLoading ? (

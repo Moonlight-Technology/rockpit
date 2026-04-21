@@ -34,3 +34,55 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+### CI/CD (Auto deploy to VPS Docker from `main`)
+
+This repository includes GitHub Actions workflow:
+
+- `.github/workflows/deploy-vps.yml`
+
+When code is pushed to `main`, it will:
+
+1. Install dependencies
+2. Run lint and build
+3. SSH into VPS
+4. Pull latest `main`
+5. Run `docker compose -f docker-compose.prod.yml up -d --build`
+
+#### Required GitHub Secrets
+
+- `VPS_HOST`: IP/domain VPS
+- `VPS_USER`: SSH user
+- `VPS_SSH_KEY`: private key (PEM/OpenSSH format)
+- `VPS_PORT`: SSH port (usually `22`)
+- `VPS_APP_DIR`: absolute path repo on VPS (example: `/opt/rockpit`)
+
+#### One-time setup on VPS
+
+```bash
+mkdir -p /opt/rockpit
+git clone https://github.com/Moonlight-Technology/rockpit.git /opt/rockpit
+cd /opt/rockpit
+cp .env.example .env.production
+# edit .env.production with production values
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+#### Production env notes (`.env.production`)
+
+- `NEXTAUTH_URL` should be your public HTTPS domain (example: `https://rockpit.tc8studio.com`).
+- If PostgreSQL is running on the VPS host (or another container published on host port), do not use `localhost` from inside app container.
+- Use host gateway name with this compose setup:
+
+```env
+DATABASE_URL="postgresql://<user>:<password>@host.docker.internal:5432/personal_journal?schema=public"
+```
+
+#### Applying Prisma migrations in production
+
+Run this after the container is up (first deploy and every schema change):
+
+```bash
+cd /opt/rockpit
+docker compose -f docker-compose.prod.yml exec rockpit npx prisma migrate deploy
+```

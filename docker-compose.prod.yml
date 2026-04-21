@@ -1,0 +1,13 @@
+services:
+  rockpit:
+    container_name: rockpit-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3020:3000"
+    env_file:
+      - .env.production
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
