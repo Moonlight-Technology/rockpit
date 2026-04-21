@@ -122,8 +122,14 @@ export async function addBoardMemberByEmail(input: {
   boardId: string;
   email: string;
 }) {
-  const access = await canAccessBoard(input.userId, input.boardId);
-  if (!access) return null;
+  const board = await prisma.board.findUnique({
+    where: { id: input.boardId },
+    select: { id: true, ownerId: true },
+  });
+  if (!board) return null;
+  if (board.ownerId !== input.userId) {
+    return { error: "OWNER_ONLY" as const };
+  }
 
   const targetUser = await prisma.user.findUnique({
     where: { email: input.email.toLowerCase() },

@@ -14,9 +14,9 @@ export function unauthorized() {
   );
 }
 
-export function forbidden() {
+export function forbidden(message = "Access denied.") {
   return NextResponse.json(
-    { ok: false, error: { code: "FORBIDDEN", message: "Access denied." } },
+    { ok: false, error: { code: "FORBIDDEN", message } },
     { status: 403 }
   );
 }

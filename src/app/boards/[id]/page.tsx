@@ -13,7 +13,7 @@ import {
   min as minDate,
   startOfWeek,
 } from "date-fns";
-import { ArrowLeft, CalendarDays, Pencil, Plus, Settings } from "lucide-react";
+import { ArrowLeft, CalendarDays, Pencil, Plus, Settings, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -150,6 +150,10 @@ export default function BoardDetailPage() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSettingsDueDatePicker, setShowSettingsDueDatePicker] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [settingsForm, setSettingsForm] = useState<BoardSettingsForm>({
@@ -457,6 +461,34 @@ export default function BoardDetailPage() {
     await fetchBoard();
   };
 
+  const inviteMemberToBoard = async () => {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) {
+      setInviteError("Email is required.");
+      return;
+    }
+
+    setInviteError(null);
+    setInviteSuccess(null);
+    setSaving(true);
+    const response = await fetch(`/api/boards/${board.id}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const result = await response.json().catch(() => null);
+    setSaving(false);
+
+    if (!response.ok) {
+      setInviteError(result?.error?.message ?? "Failed to invite member.");
+      return;
+    }
+
+    setInviteSuccess("Invitation successful. Board is now visible in that account.");
+    setInviteEmail("");
+    await fetchBoard();
+  };
+
   return (
     <div className={`min-h-screen ${themeClassMap[board.theme] ?? themeClassMap.Slate}`}>
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
@@ -473,6 +505,19 @@ export default function BoardDetailPage() {
             <p className="text-sm text-muted-foreground">{board.description}</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setInviteError(null);
+                setInviteSuccess(null);
+                setInviteEmail("");
+                setShowInviteModal(true);
+              }}
+            >
+              <UserPlus data-icon="inline-start" />
+              Invite
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -1199,6 +1244,58 @@ export default function BoardDetailPage() {
                 </Button>
                 <Button onClick={saveBoardSettings} disabled={saving}>
                   {saving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {showInviteModal ? (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/35 p-4">
+          <Card className="w-full max-w-lg">
+            <CardHeader>
+              <CardTitle>Invite Member</CardTitle>
+              <CardDescription>
+                Invite user by email so this board appears in their account.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="flex gap-2">
+                <input
+                  value={inviteEmail}
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                  placeholder="member@email.com"
+                  className="h-10 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+                <Button onClick={inviteMemberToBoard} disabled={saving}>
+                  {saving ? "Inviting..." : "Invite"}
+                </Button>
+              </div>
+              {inviteError ? <p className="text-sm text-destructive">{inviteError}</p> : null}
+              {inviteSuccess ? <p className="text-sm text-emerald-600">{inviteSuccess}</p> : null}
+              <div className="rounded-md border bg-muted/30 p-3">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Current Members
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {members.map((member) => (
+                    <Badge key={member.id} variant="outline">
+                      {member.name} ({member.email})
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowInviteModal(false);
+                    setInviteError(null);
+                    setInviteSuccess(null);
+                  }}
+                >
+                  Close
                 </Button>
               </div>
             </CardContent>
