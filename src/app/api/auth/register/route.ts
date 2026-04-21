@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { registerSchema } from "@/lib/validators/auth";
@@ -32,7 +33,44 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ ok: true, data: user }, { status: 201 });
-  } catch {
+  } catch (error) {
+    console.error("register_error", error);
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        return NextResponse.json(
+          { ok: false, error: { code: "EMAIL_EXISTS", message: "Email already registered." } },
+          { status: 409 }
+        );
+      }
+
+      if (error.code === "P2021") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: {
+              code: "DB_SCHEMA_MISMATCH",
+              message: "Database schema is not ready. Please run migrations.",
+            },
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (error instanceof Prisma.PrismaClientInitializationError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "DB_CONNECTION_ERROR",
+            message: "Cannot connect to database. Please check server configuration.",
+          },
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { ok: false, error: { code: "INTERNAL_ERROR", message: "Unexpected server error." } },
       { status: 500 }

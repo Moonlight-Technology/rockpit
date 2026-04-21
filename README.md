@@ -80,5 +80,5 @@ Run this after the container is up (first deploy and every schema change):
 
 ```bash
 cd /root/rockpit
-docker compose -f docker-compose.prod.yml exec rockpit npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml exec rockpit ./node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
 ```
