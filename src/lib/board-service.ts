@@ -8,6 +8,10 @@ function isDoneColumnTitle(title: string) {
   return title.trim().toLowerCase() === DONE_COLUMN_TITLE;
 }
 
+function normalizeAssigneeIds(assigneeIds?: (string | null | undefined)[]) {
+  return Array.from(new Set((assigneeIds ?? []).filter(Boolean) as string[])).slice(0, 20);
+}
+
 const boardSummaryInclude = {
   _count: { select: { columns: true } },
   columns: {
@@ -26,7 +30,7 @@ const boardDetailInclude = {
   members: {
     include: {
       user: {
-        select: { id: true, name: true, email: true },
+        select: { id: true, name: true, email: true, avatarUrl: true },
       },
     },
   },
@@ -37,7 +41,14 @@ const boardDetailInclude = {
         orderBy: { position: "asc" },
         include: {
           assignee: {
-            select: { id: true, name: true, email: true },
+            select: { id: true, name: true, email: true, avatarUrl: true },
+          },
+          assignees: {
+            include: {
+              user: {
+                select: { id: true, name: true, email: true, avatarUrl: true },
+              },
+            },
           },
         },
       },
@@ -143,7 +154,7 @@ export async function addBoardMemberByEmail(input: {
 
   const targetUser = await prisma.user.findUnique({
     where: { email: input.email.toLowerCase() },
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, avatarUrl: true },
   });
   if (!targetUser) return { error: "USER_NOT_FOUND" as const };
 
@@ -241,9 +252,11 @@ export async function addTaskToBoard(input: {
   columnId: string;
   title: string;
   description?: string | null;
+  startDate?: string | null;
   dueDate?: string | null;
   priority?: TaskPriority;
   assigneeId?: string | null;
+  assigneeIds?: string[];
   status?: "TODO" | "DONE";
 }) {
   const access = await canAccessBoard(input.userId, input.boardId);
@@ -255,15 +268,23 @@ export async function addTaskToBoard(input: {
   });
   if (!column) return null;
 
-  if (input.assigneeId) {
-    const isMember = await prisma.boardMember.findFirst({
+  const assigneeIds = normalizeAssigneeIds(
+    input.assigneeIds && input.assigneeIds.length > 0
+      ? input.assigneeIds
+      : input.assigneeId
+        ? [input.assigneeId]
+        : []
+  );
+
+  if (assigneeIds.length > 0) {
+    const members = await prisma.boardMember.findMany({
       where: {
         boardId: input.boardId,
-        userId: input.assigneeId,
+        userId: { in: assigneeIds },
       },
-      select: { id: true },
+      select: { userId: true },
     });
-    if (!isMember) {
+    if (members.length !== assigneeIds.length) {
       return null;
     }
   }
@@ -280,6 +301,7 @@ export async function addTaskToBoard(input: {
       createdById: input.userId,
       title: input.title,
       description: input.description ?? null,
+      startDate: input.startDate ? new Date(input.startDate) : null,
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
       priority: input.priority ?? TaskPriority.MEDIUM,
       status: input.status ?? (isDoneColumnTitle(column.title) ? "DONE" : "TODO"),
@@ -287,7 +309,15 @@ export async function addTaskToBoard(input: {
         (input.status ?? (isDoneColumnTitle(column.title) ? "DONE" : "TODO")) === "DONE"
           ? new Date()
           : null,
-      assigneeId: input.assigneeId ?? null,
+      assigneeId: assigneeIds[0] ?? null,
+      assignees: assigneeIds.length
+        ? {
+            createMany: {
+              data: assigneeIds.map((userId) => ({ userId })),
+              skipDuplicates: true,
+            },
+          }
+        : undefined,
       position: lastTask ? lastTask.position + 1 : 0,
     },
   });
@@ -306,6 +336,11 @@ export async function createStandaloneTaskForUser(input: {
       columnId: null,
       createdById: input.userId,
       assigneeId: input.userId,
+      assignees: {
+        create: {
+          userId: input.userId,
+        },
+      },
       title: input.title,
       description: input.description ?? null,
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
@@ -323,14 +358,16 @@ export async function createStandaloneTaskForUser(input: {
 export async function listAssignedTasksForUser(userId: string) {
   return prisma.task.findMany({
     where: {
-      assigneeId: userId,
-      OR: [
+      AND: [
+        { OR: [{ assigneeId: userId }, { assignees: { some: { userId } } }] },
+        { OR: [
         {
           board: {
             OR: [{ ownerId: userId }, { members: { some: { userId } } }],
           },
         },
         { boardId: null },
+      ]},
       ],
     },
     include: {
@@ -341,7 +378,14 @@ export async function listAssignedTasksForUser(userId: string) {
         select: { id: true, title: true },
       },
       assignee: {
-        select: { id: true, name: true, email: true },
+        select: { id: true, name: true, email: true, avatarUrl: true },
+      },
+      assignees: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, avatarUrl: true },
+          },
+        },
       },
     },
     orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
@@ -360,7 +404,11 @@ export async function listAllTasksForUser(userId: string) {
         },
         {
           boardId: null,
-          OR: [{ assigneeId: userId }, { createdById: userId }],
+          OR: [
+            { assigneeId: userId },
+            { assignees: { some: { userId } } },
+            { createdById: userId },
+          ],
         },
       ],
     },
@@ -372,7 +420,14 @@ export async function listAllTasksForUser(userId: string) {
         select: { id: true, title: true },
       },
       assignee: {
-        select: { id: true, name: true, email: true },
+        select: { id: true, name: true, email: true, avatarUrl: true },
+      },
+      assignees: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, avatarUrl: true },
+          },
+        },
       },
     },
     orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
@@ -396,7 +451,7 @@ export async function updateTaskStatusForUser(input: {
         },
         {
           boardId: null,
-          assigneeId: input.userId,
+          OR: [{ assigneeId: input.userId }, { assignees: { some: { userId: input.userId } } }],
         },
       ],
     },
@@ -478,9 +533,11 @@ export async function updateTaskForUser(input: {
   taskId: string;
   title: string;
   description?: string | null;
+  startDate?: string | null;
   dueDate?: string | null;
   priority: "LOW" | "MEDIUM" | "HIGH";
   assigneeId?: string | null;
+  assigneeIds?: string[];
 }) {
   const task = await prisma.task.findFirst({
     where: {
@@ -491,33 +548,61 @@ export async function updateTaskForUser(input: {
             OR: [{ ownerId: input.userId }, { members: { some: { userId: input.userId } } }],
           },
         },
-        { boardId: null, assigneeId: input.userId },
+        {
+          boardId: null,
+          OR: [{ assigneeId: input.userId }, { assignees: { some: { userId: input.userId } } }],
+        },
       ],
     },
     select: { id: true, boardId: true },
   });
   if (!task) return null;
 
-  if (input.assigneeId && task.boardId) {
-    const isMember = await prisma.boardMember.findFirst({
+  const normalizedAssigneeIds = normalizeAssigneeIds(
+    input.assigneeIds && input.assigneeIds.length > 0
+      ? input.assigneeIds
+      : input.assigneeId
+        ? [input.assigneeId]
+        : []
+  );
+
+  if (task.boardId && normalizedAssigneeIds.length > 0) {
+    const members = await prisma.boardMember.findMany({
       where: {
         boardId: task.boardId,
-        userId: input.assigneeId,
+        userId: { in: normalizedAssigneeIds },
       },
-      select: { id: true },
+      select: { userId: true },
     });
-    if (!isMember) return null;
+    if (members.length !== normalizedAssigneeIds.length) return null;
   }
 
-  return prisma.task.update({
-    where: { id: input.taskId },
-    data: {
-      title: input.title.trim(),
-      description: input.description?.trim() || null,
-      dueDate: input.dueDate ? new Date(input.dueDate) : null,
-      priority: input.priority,
-      assigneeId: task.boardId ? input.assigneeId ?? null : input.userId,
-    },
+  const assignmentIds =
+    task.boardId
+      ? normalizedAssigneeIds
+      : [input.userId];
+
+  return prisma.$transaction(async (tx) => {
+    await tx.taskAssignment.deleteMany({ where: { taskId: input.taskId } });
+
+    if (assignmentIds.length > 0) {
+      await tx.taskAssignment.createMany({
+        data: assignmentIds.map((userId) => ({ taskId: input.taskId, userId })),
+        skipDuplicates: true,
+      });
+    }
+
+    return tx.task.update({
+      where: { id: input.taskId },
+      data: {
+        title: input.title.trim(),
+        description: input.description?.trim() || null,
+        startDate: input.startDate ? new Date(input.startDate) : null,
+        dueDate: input.dueDate ? new Date(input.dueDate) : null,
+        priority: input.priority,
+        assigneeId: assignmentIds[0] ?? null,
+      },
+    });
   });
 }
 
@@ -536,7 +621,10 @@ export async function updateTaskScheduleForUser(input: {
             OR: [{ ownerId: input.userId }, { members: { some: { userId: input.userId } } }],
           },
         },
-        { boardId: null, assigneeId: input.userId },
+        {
+          boardId: null,
+          OR: [{ assigneeId: input.userId }, { assignees: { some: { userId: input.userId } } }],
+        },
       ],
     },
     select: { id: true },
@@ -567,7 +655,10 @@ export async function deleteTaskForUser(input: { userId: string; taskId: string 
             OR: [{ ownerId: input.userId }, { members: { some: { userId: input.userId } } }],
           },
         },
-        { boardId: null, assigneeId: input.userId },
+        {
+          boardId: null,
+          OR: [{ assigneeId: input.userId }, { assignees: { some: { userId: input.userId } } }],
+        },
       ],
     },
     select: { id: true },
