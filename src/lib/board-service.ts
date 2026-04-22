@@ -10,6 +10,16 @@ function isDoneColumnTitle(title: string) {
 
 const boardSummaryInclude = {
   _count: { select: { columns: true } },
+  columns: {
+    select: {
+      title: true,
+      tasks: {
+        select: {
+          status: true,
+        },
+      },
+    },
+  },
 } satisfies Prisma.BoardInclude;
 
 const boardDetailInclude = {

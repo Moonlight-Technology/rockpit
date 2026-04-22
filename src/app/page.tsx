@@ -43,6 +43,10 @@ type BoardListItem = {
   theme: string;
   tags: string[];
   updatedAt: string;
+  columns: {
+    title: string;
+    tasks: { status: "TODO" | "DONE" }[];
+  }[];
   _count: { columns: number };
 };
 
@@ -123,6 +127,24 @@ function toDateInputValue(date: Date) {
 
 function toTimeInputValue(date: Date) {
   return format(date, "HH:mm");
+}
+
+function boardProgressPercent(board: BoardListItem) {
+  let doneTasks = 0;
+  let openTasks = 0;
+
+  for (const column of board.columns) {
+    const isDoneColumn = column.title.trim().toLowerCase() === "done";
+    if (isDoneColumn) {
+      doneTasks += column.tasks.length;
+      continue;
+    }
+    openTasks += column.tasks.length;
+  }
+
+  const total = doneTasks + openTasks;
+  if (total === 0) return 0;
+  return Math.round((doneTasks / total) * 100);
 }
 
 export default function Home() {
@@ -599,7 +621,7 @@ export default function Home() {
                               <CardDescription>{board.description}</CardDescription>
                             </CardHeader>
                             <CardContent className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span>{board._count.columns} columns</span>
+                              <span>{boardProgressPercent(board)}% done</span>
                               <span>{format(new Date(board.updatedAt), "MMM d, yyyy")}</span>
                             </CardContent>
                             {board.tags.length > 0 ? (
