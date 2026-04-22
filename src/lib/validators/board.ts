@@ -20,6 +20,11 @@ export const addColumnSchema = z.object({
   title: z.string().trim().min(1).max(120),
 });
 
+export const reorderColumnSchema = z.object({
+  columnId: z.string().cuid(),
+  toIndex: z.number().int().min(0),
+});
+
 export const addTaskSchema = z.object({
   columnId: z.string().cuid(),
   title: z.string().trim().min(1).max(160),
@@ -47,6 +52,8 @@ export const updateTaskSchema = z.object({
   startDate: z.string().datetime().optional().nullable(),
   dueDate: z.string().datetime().optional().nullable(),
   priority: priorityEnum,
+  boardId: z.string().cuid().optional().nullable(),
+  columnId: z.string().cuid().optional().nullable(),
   assigneeId: z.string().cuid().optional().nullable(),
   assigneeIds: z.array(z.string().cuid()).max(20).optional(),
 });

@@ -168,6 +168,19 @@ function moveTaskLocally(columns: BoardColumn[], payload: DragPayload, toColumnI
   });
 }
 
+function moveColumnLocally(columns: BoardColumn[], movingColumnId: string, toIndex: number) {
+  const moving = columns.find((column) => column.id === movingColumnId);
+  if (!moving || isDoneColumnTitle(moving.title)) return columns;
+
+  const movable = columns.filter((column) => !isDoneColumnTitle(column.title));
+  const remaining = movable.filter((column) => column.id !== movingColumnId);
+  const safeIndex = Math.max(0, Math.min(toIndex, remaining.length));
+  const reordered = [...remaining];
+  reordered.splice(safeIndex, 0, moving);
+  const doneColumns = columns.filter((column) => isDoneColumnTitle(column.title));
+  return [...reordered, ...doneColumns];
+}
+
 export default function BoardDetailPage() {
   const params = useParams<{ id: string }>();
   const boardId = params.id;
@@ -178,6 +191,10 @@ export default function BoardDetailPage() {
   const [newColumnTitle, setNewColumnTitle] = useState("");
   const [renameState, setRenameState] = useState<RenameState>(null);
   const [saving, setSaving] = useState(false);
+  const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
+  const [columnDragSnapshot, setColumnDragSnapshot] = useState<BoardColumn[] | null>(null);
+  const [didColumnDrop, setDidColumnDrop] = useState(false);
+  const [columnDragOverId, setColumnDragOverId] = useState<string | null>(null);
 
   const [taskModalColumnId, setTaskModalColumnId] = useState<string | null>(null);
   const [showTaskDueDatePicker, setShowTaskDueDatePicker] = useState(false);
@@ -480,6 +497,41 @@ export default function BoardDetailPage() {
     } catch {
       setBoard((prev) => (prev ? { ...prev, columns: snapshot } : prev));
     }
+  };
+
+  const reorderColumn = async (
+    movingColumnId: string,
+    toIndex: number,
+    fallbackSnapshot?: BoardColumn[]
+  ) => {
+    if (!board) return;
+    const baseColumns = fallbackSnapshot ?? board.columns;
+    const movingColumn = baseColumns.find((column) => column.id === movingColumnId);
+    if (!movingColumn || isDoneColumnTitle(movingColumn.title)) return;
+
+    const snapshot = baseColumns;
+    const updatedColumns = moveColumnLocally(baseColumns, movingColumnId, toIndex);
+    setBoard((prev) => (prev ? { ...prev, columns: updatedColumns } : prev));
+
+    const response = await fetch(`/api/boards/${board.id}/columns`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "reorder",
+        columnId: movingColumnId,
+        toIndex,
+      }),
+    });
+
+    if (!response.ok) {
+      setBoard((prev) => (prev ? { ...prev, columns: snapshot } : prev));
+      setColumnDragSnapshot(null);
+      setColumnDragOverId(null);
+      return;
+    }
+    setColumnDragSnapshot(null);
+    setColumnDragOverId(null);
+    await fetchBoard();
   };
 
   const addColumn = async () => {
@@ -826,7 +878,7 @@ export default function BoardDetailPage() {
   return (
     <div className={`min-h-screen ${themeClassMap[board.theme] ?? themeClassMap.Slate}`}>
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <Link
               href="/"
@@ -838,53 +890,55 @@ export default function BoardDetailPage() {
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{board.title}</h1>
             <p className="text-sm text-muted-foreground">{board.description}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowBoardMembers((prev) => !prev)}
-            >
-              <Users data-icon="inline-start" />
-              {showBoardMembers ? "Hide Members" : "Show Members"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setInviteError(null);
-                setInviteSuccess(null);
-                setInviteEmail("");
-                setShowInviteModal(true);
-              }}
-            >
-              <UserPlus data-icon="inline-start" />
-              Invite
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setShowSettingsDueDatePicker(false);
-                setShowSettingsModal(true);
-              }}
-            >
-              <Settings data-icon="inline-start" />
-              Board Settings
-            </Button>
-            <Badge variant="secondary">Theme: {board.theme}</Badge>
-            {board.dueDate ? (
-              <Badge variant="outline">Due {new Date(board.dueDate).toLocaleDateString()}</Badge>
-            ) : null}
-            {board.tags.map((tag) => (
-              <Badge key={tag} variant="outline">
-                {tag}
-              </Badge>
-            ))}
+          <div className="w-full md:w-auto">
+            <div className="flex w-full flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowBoardMembers((prev) => !prev)}
+              >
+                <Users data-icon="inline-start" />
+                {showBoardMembers ? "Hide Members" : "Show Members"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setInviteError(null);
+                  setInviteSuccess(null);
+                  setInviteEmail("");
+                  setShowInviteModal(true);
+                }}
+              >
+                <UserPlus data-icon="inline-start" />
+                Invite
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowSettingsDueDatePicker(false);
+                  setShowSettingsModal(true);
+                }}
+              >
+                <Settings data-icon="inline-start" />
+                Board Settings
+              </Button>
+              <Badge variant="secondary">Theme: {board.theme}</Badge>
+              {board.dueDate ? (
+                <Badge variant="outline">Due {new Date(board.dueDate).toLocaleDateString()}</Badge>
+              ) : null}
+              {board.tags.map((tag) => (
+                <Badge key={tag} variant="outline">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
           </div>
         </div>
 
         {showBoardMembers ? (
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
             {members.map((member) => {
               return (
                 <div
@@ -914,21 +968,67 @@ export default function BoardDetailPage() {
           }
           className="w-full gap-4"
         >
-          <TabsList className="inline-flex w-fit">
+          <TabsList className="inline-flex w-full flex-wrap justify-start md:w-fit">
             <TabsTrigger value="board">Board</TabsTrigger>
             <TabsTrigger value="list">List</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
           </TabsList>
           <TabsContent value="board" className="pt-2">
-            <section className="flex gap-4 overflow-x-auto px-1 py-1 pb-3">
+            <section className="flex gap-3 overflow-x-auto px-1 py-1 pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
             {board.columns.map((column) => (
               <Card
                 key={column.id}
-                className="h-fit min-h-80 w-[20rem] shrink-0 bg-muted/30"
+                draggable={!isDoneColumnTitle(column.title)}
+                onDragStart={(event) => {
+                  if (isDoneColumnTitle(column.title)) return;
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/column-id", column.id);
+                  setDraggingColumnId(column.id);
+                  setColumnDragSnapshot(board.columns);
+                  setDidColumnDrop(false);
+                  setColumnDragOverId(column.id);
+                }}
+                onDragEnd={() => {
+                  if (!didColumnDrop && columnDragSnapshot) {
+                    setBoard((prev) => (prev ? { ...prev, columns: columnDragSnapshot } : prev));
+                  }
+                  setDraggingColumnId(null);
+                  setColumnDragSnapshot(null);
+                  setDidColumnDrop(false);
+                  setColumnDragOverId(null);
+                }}
+                className={`h-fit min-h-80 w-[16.5rem] shrink-0 bg-muted/30 transition-all duration-200 sm:w-[20rem] ${
+                  draggingColumnId === column.id ? "opacity-70" : ""
+                } ${
+                  columnDragOverId === column.id && draggingColumnId ? "ring-2 ring-primary/40" : ""
+                }`}
                 onDragOver={(event) => event.preventDefault()}
+                onDragEnter={(event) => {
+                  const movingColumnId = event.dataTransfer.getData("text/column-id");
+                  if (!movingColumnId || isDoneColumnTitle(column.title) || !board) return;
+                  setColumnDragOverId(column.id);
+                  const base = columnDragSnapshot ?? board.columns;
+                  const movableColumns = base.filter((item) => !isDoneColumnTitle(item.title));
+                  const targetIndex = movableColumns.findIndex((item) => item.id === column.id);
+                  if (targetIndex < 0) return;
+                  const preview = moveColumnLocally(base, movingColumnId, targetIndex);
+                  setBoard((prev) => (prev ? { ...prev, columns: preview } : prev));
+                }}
                 onDrop={(event) => {
                   event.preventDefault();
+                  const movingColumnId = event.dataTransfer.getData("text/column-id");
+                  if (movingColumnId) {
+                    setDraggingColumnId(null);
+                    if (isDoneColumnTitle(column.title)) return;
+                    const movableColumns = board.columns.filter((item) => !isDoneColumnTitle(item.title));
+                    const targetIndex = movableColumns.findIndex((item) => item.id === column.id);
+                    if (targetIndex >= 0) {
+                      setDidColumnDrop(true);
+                      void reorderColumn(movingColumnId, targetIndex, columnDragSnapshot ?? board.columns);
+                    }
+                    return;
+                  }
                   const payload = event.dataTransfer.getData("application/json");
                   if (!payload) return;
                   void onDropToColumn(column.id, payload);
@@ -976,6 +1076,7 @@ export default function BoardDetailPage() {
                       draggable
                       onClick={() => openCardModal(task)}
                       onDragStart={(event) => {
+                        event.stopPropagation();
                         const payload: DragPayload = { taskId: task.id, fromColumnId: column.id };
                         event.dataTransfer.setData("application/json", JSON.stringify(payload));
                       }}
@@ -1043,7 +1144,28 @@ export default function BoardDetailPage() {
             ))}
 
             <Card
-              className="h-fit w-[20rem] shrink-0 border-dashed bg-transparent"
+              className={`h-fit w-[16.5rem] shrink-0 border-dashed bg-transparent transition-all duration-200 sm:w-[20rem] ${
+                columnDragOverId === "add-column-tail" && draggingColumnId ? "ring-2 ring-primary/40" : ""
+              }`}
+              onDragOver={(event) => event.preventDefault()}
+              onDragEnter={(event) => {
+                const movingColumnId = event.dataTransfer.getData("text/column-id");
+                if (!movingColumnId || !board) return;
+                setColumnDragOverId("add-column-tail");
+                const base = columnDragSnapshot ?? board.columns;
+                const movableColumns = base.filter((item) => !isDoneColumnTitle(item.title));
+                const preview = moveColumnLocally(base, movingColumnId, movableColumns.length);
+                setBoard((prev) => (prev ? { ...prev, columns: preview } : prev));
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const movingColumnId = event.dataTransfer.getData("text/column-id");
+                if (!movingColumnId) return;
+                setDraggingColumnId(null);
+                const movableColumns = board.columns.filter((item) => !isDoneColumnTitle(item.title));
+                setDidColumnDrop(true);
+                void reorderColumn(movingColumnId, movableColumns.length, columnDragSnapshot ?? board.columns);
+              }}
             >
               <CardHeader>
                 <CardTitle>Add Column</CardTitle>

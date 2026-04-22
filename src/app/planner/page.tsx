@@ -15,7 +15,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  TaskDatePickerPanel,
+  type TaskDatePickerTarget,
+  type TaskDatePickerValue,
+} from "@/components/task-date-picker-panel";
 
 type Task = {
   id: string;
@@ -23,10 +29,12 @@ type Task = {
   description: string | null;
   status: "TODO" | "DONE";
   priority: "HIGH" | "MEDIUM" | "LOW";
+  startDate: string | null;
   dueDate: string | null;
   plannedStartAt: string | null;
   plannedDurationMinutes: number | null;
   assignee: { id: string; name: string; email: string } | null;
+  column: { id: string; title: string } | null;
   board: { id: string; title: string } | null;
 };
 
@@ -37,12 +45,24 @@ type AddTaskForm = {
   dueDate: string;
 };
 
+type PlannerBoardOption = {
+  id: string;
+  title: string;
+};
+
 type EditTaskForm = {
   taskId: string;
   title: string;
   description: string;
   priority: "LOW" | "MEDIUM" | "HIGH";
+  boardId: string;
+  columnId: string;
+  startDate: string;
   dueDate: string;
+  useDateRange: boolean;
+  useTimeRange: boolean;
+  startTime: string;
+  endTime: string;
   assigneeId: string | null;
 };
 
@@ -79,8 +99,19 @@ function toDateInputValue(date: Date) {
   return format(date, "yyyy-MM-dd");
 }
 
+function toTimeInputValue(date: Date) {
+  return format(date, "HH:mm");
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function combineDateAndTime(dateString: string, timeString: string) {
+  const date = new Date(`${dateString}T00:00:00`);
+  const [hour, minute] = timeString.split(":").map(Number);
+  date.setHours(hour, minute, 0, 0);
+  return date;
 }
 
 export default function PlannerPage() {
@@ -94,6 +125,7 @@ export default function PlannerPage() {
   const [now, setNow] = useState<Date>(new Date());
   const [resizing, setResizing] = useState<ResizeState | null>(null);
   const [draftDurationMinutes, setDraftDurationMinutes] = useState<Record<string, number>>({});
+  const [selectedScheduledTaskId, setSelectedScheduledTaskId] = useState<string | null>(null);
 
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [showAddDatePicker, setShowAddDatePicker] = useState(false);
@@ -105,9 +137,23 @@ export default function PlannerPage() {
   });
 
   const [editTaskForm, setEditTaskForm] = useState<EditTaskForm | null>(null);
-  const [showEditDatePicker, setShowEditDatePicker] = useState(false);
+  const [showEditTaskDatePanel, setShowEditTaskDatePanel] = useState(false);
+  const [editDatePickerTarget, setEditDatePickerTarget] = useState<TaskDatePickerTarget>("due");
+  const [editTaskDateSnapshot, setEditTaskDateSnapshot] = useState<TaskDatePickerValue | null>(null);
   const [editTaskError, setEditTaskError] = useState<string | null>(null);
   const [updatingTask, setUpdatingTask] = useState(false);
+  const [deletingTask, setDeletingTask] = useState(false);
+  const [plannerBoards, setPlannerBoards] = useState<PlannerBoardOption[]>([]);
+  const [editColumnOptions, setEditColumnOptions] = useState<{ id: string; title: string }[]>([]);
+
+  const takeEditDateSnapshot = (form: EditTaskForm): TaskDatePickerValue => ({
+    startDate: form.startDate,
+    dueDate: form.dueDate,
+    useDateRange: form.useDateRange,
+    useTimeRange: form.useTimeRange,
+    startTime: form.startTime,
+    endTime: form.endTime,
+  });
 
   const fetchTasks = async () => {
     setLoading(true);
@@ -128,6 +174,24 @@ export default function PlannerPage() {
   }, []);
 
   useEffect(() => {
+    const fetchBoards = async () => {
+      const response = await fetch("/api/boards", { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        setPlannerBoards([]);
+        return;
+      }
+      setPlannerBoards(
+        (result.data ?? []).map((board: { id: string; title: string }) => ({
+          id: board.id,
+          title: board.title,
+        }))
+      );
+    };
+    void fetchBoards();
+  }, []);
+
+  useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
@@ -140,10 +204,7 @@ export default function PlannerPage() {
   const dueOnSelectedDate = useMemo(
     () =>
       tasks.filter(
-        (task) =>
-          task.status !== "DONE" &&
-          task.dueDate &&
-          isSameDay(new Date(task.dueDate), selectedDate)
+        (task) => task.dueDate && isSameDay(new Date(task.dueDate), selectedDate)
       ),
     [tasks, selectedDate]
   );
@@ -168,9 +229,16 @@ export default function PlannerPage() {
   const unscheduledTasks = useMemo(
     () =>
       dueOnSelectedDate.filter(
-        (task) => !task.plannedStartAt || !isSameDay(new Date(task.plannedStartAt), selectedDate)
+        (task) =>
+          task.status !== "DONE" &&
+          (!task.plannedStartAt || !isSameDay(new Date(task.plannedStartAt), selectedDate))
       ),
     [dueOnSelectedDate, selectedDate]
+  );
+
+  const selectedScheduledTask = useMemo(
+    () => scheduledBlocks.find((task) => task.id === selectedScheduledTaskId) ?? null,
+    [scheduledBlocks, selectedScheduledTaskId]
   );
 
   const patchTaskSchedule = async (
@@ -229,6 +297,25 @@ export default function PlannerPage() {
 
     const ok = await patchTaskSchedule(taskId, null, null);
     if (!ok) {
+      setTasks(snapshot);
+      return;
+    }
+    setSelectedScheduledTaskId((prev) => (prev === taskId ? null : prev));
+  };
+
+  const patchTaskStatus = async (taskId: string, status: "TODO" | "DONE") => {
+    const snapshot = tasks;
+    setTasks((current) =>
+      current.map((task) => (task.id === taskId ? { ...task, status } : task))
+    );
+
+    const response = await fetch(`/api/tasks/${taskId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+
+    if (!response.ok) {
       setTasks(snapshot);
     }
   };
@@ -335,16 +422,67 @@ export default function PlannerPage() {
 
   const openEditTaskModal = (task: Task) => {
     setEditTaskError(null);
-    setShowEditDatePicker(false);
-    setEditTaskForm({
+    const dueDate = task.dueDate ? toDateInputValue(new Date(task.dueDate)) : toDateInputValue(selectedDate);
+    const startDate = task.startDate ? toDateInputValue(new Date(task.startDate)) : "";
+    const plannedStart = task.plannedStartAt ? new Date(task.plannedStartAt) : null;
+    const startTime = plannedStart ? toTimeInputValue(plannedStart) : "09:00";
+    const endTime =
+      plannedStart && task.plannedDurationMinutes
+        ? toTimeInputValue(new Date(plannedStart.getTime() + task.plannedDurationMinutes * 60_000))
+        : "10:00";
+
+    const nextForm: EditTaskForm = {
       taskId: task.id,
       title: task.title,
       description: task.description ?? "",
       priority: task.priority,
-      dueDate: task.dueDate ? toDateInputValue(new Date(task.dueDate)) : toDateInputValue(selectedDate),
+      boardId: task.board?.id ?? "",
+      columnId: task.column?.id ?? "",
+      startDate,
+      dueDate,
+      useDateRange: Boolean(startDate),
+      useTimeRange: Boolean(task.plannedStartAt && task.plannedDurationMinutes),
+      startTime,
+      endTime,
       assigneeId: task.assignee?.id ?? null,
-    });
+    };
+    setEditTaskForm(nextForm);
+    setEditTaskDateSnapshot(takeEditDateSnapshot(nextForm));
+    setEditDatePickerTarget("due");
+    setShowEditTaskDatePanel(true);
   };
+
+  const editBoardId = editTaskForm?.boardId ?? "";
+
+  useEffect(() => {
+    if (!editBoardId) return;
+    const fetchColumns = async () => {
+      const response = await fetch(`/api/boards/${editBoardId}`, { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        setEditColumnOptions([]);
+        return;
+      }
+      const columns = (result.data.columns ?? []).map((column: { id: string; title: string }) => ({
+        id: column.id,
+        title: column.title,
+      }));
+      setEditColumnOptions(columns);
+      setEditTaskForm((prev) =>
+        prev
+          ? {
+              ...prev,
+              columnId:
+                prev.columnId && columns.some((column: { id: string }) => column.id === prev.columnId)
+                  ? prev.columnId
+                  : (columns[0]?.id ?? ""),
+            }
+          : prev
+      );
+    };
+
+    void fetchColumns();
+  }, [editBoardId]);
 
   const submitEditTask = async () => {
     if (!editTaskForm) return;
@@ -354,29 +492,115 @@ export default function PlannerPage() {
       setEditTaskError("Task title is required.");
       return;
     }
+    if (editTaskForm.boardId && !editTaskForm.columnId) {
+      setEditTaskError("Please select a column for the selected board.");
+      return;
+    }
+
+    if (!editTaskForm.dueDate) {
+      setEditTaskError("Due date is required.");
+      return;
+    }
+    if (editTaskForm.useDateRange && !editTaskForm.startDate) {
+      setEditTaskError("Start date is required when Start date is active.");
+      return;
+    }
+
+    const dueAt = editTaskForm.useTimeRange
+      ? combineDateAndTime(
+          editTaskForm.dueDate,
+          editTaskForm.useDateRange ? editTaskForm.endTime : editTaskForm.startTime
+        )
+      : new Date(`${editTaskForm.dueDate}T00:00:00`);
+
+    const startAt = editTaskForm.useDateRange
+      ? editTaskForm.useTimeRange
+        ? combineDateAndTime(editTaskForm.startDate, editTaskForm.startTime)
+        : new Date(`${editTaskForm.startDate}T00:00:00`)
+      : null;
+
+    if (editTaskForm.useDateRange && startAt && dueAt.getTime() < startAt.getTime()) {
+      setEditTaskError("Due date/time must be later than start date/time.");
+      return;
+    }
 
     setUpdatingTask(true);
-    const due = new Date(`${editTaskForm.dueDate}T12:00:00`);
     const response = await fetch(`/api/tasks/${editTaskForm.taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: editTaskForm.title.trim(),
         description: editTaskForm.description.trim() || null,
-        dueDate: due.toISOString(),
+        startDate: startAt ? startAt.toISOString() : null,
+        dueDate: dueAt.toISOString(),
         priority: editTaskForm.priority,
+        boardId: editTaskForm.boardId || null,
+        columnId: editTaskForm.boardId ? editTaskForm.columnId || null : null,
         assigneeId: editTaskForm.assigneeId,
       }),
     });
-    setUpdatingTask(false);
 
     if (!response.ok) {
+      setUpdatingTask(false);
       setEditTaskError("Failed to update task.");
       return;
     }
 
+    const schedulePayload = editTaskForm.useTimeRange
+      ? (() => {
+          const scheduleStart = startAt ?? combineDateAndTime(editTaskForm.dueDate, editTaskForm.startTime);
+          const scheduleEnd = editTaskForm.useDateRange
+            ? dueAt
+            : new Date(scheduleStart.getTime() + 60 * 60_000);
+          return {
+            plannedStartAt: scheduleStart.toISOString(),
+            plannedDurationMinutes: Math.max(
+              30,
+              Math.round((scheduleEnd.getTime() - scheduleStart.getTime()) / 60000)
+            ),
+          };
+        })()
+      : { plannedStartAt: null, plannedDurationMinutes: null };
+
+    const scheduleRes = await fetch(`/api/tasks/${editTaskForm.taskId}/schedule`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(schedulePayload),
+    });
+    setUpdatingTask(false);
+
+    if (!scheduleRes.ok) {
+      setEditTaskError("Task updated, but failed to update time range.");
+      return;
+    }
+
     setEditTaskForm(null);
-    setShowEditDatePicker(false);
+    setShowEditTaskDatePanel(false);
+    setEditTaskDateSnapshot(null);
+    await fetchTasks();
+  };
+
+  const deleteTaskFromEdit = async () => {
+    if (!editTaskForm) return;
+
+    const confirmed = window.confirm("Delete this task? This action cannot be undone.");
+    if (!confirmed) return;
+
+    setEditTaskError(null);
+    setDeletingTask(true);
+    const response = await fetch(`/api/tasks/${editTaskForm.taskId}`, {
+      method: "DELETE",
+    });
+    setDeletingTask(false);
+
+    if (!response.ok) {
+      setEditTaskError("Failed to delete task.");
+      return;
+    }
+
+    setEditTaskForm(null);
+    setShowEditTaskDatePanel(false);
+    setEditTaskDateSnapshot(null);
     await fetchTasks();
   };
 
@@ -516,24 +740,40 @@ export default function PlannerPage() {
                     const durationHours = Math.max(1, Math.round(task.durationMinutes / 60));
                     const endHour = Math.min(task.startHour + durationHours, END_HOUR_EXCLUSIVE);
                     const timeRange = `${hourLabel(task.startHour)} - ${hourLabel(endHour)}`;
+                    const isDone = task.status === "DONE";
                     return (
                       <div
                         key={task.id}
                         draggable
+                        onClick={() => setSelectedScheduledTaskId(task.id)}
                         onDragStart={(event) => {
                           event.dataTransfer.effectAllowed = "move";
                           event.dataTransfer.setData("text/task-id", task.id);
                           event.dataTransfer.setData("text/plain", task.id);
                         }}
-                        className="absolute left-2 right-2 cursor-grab rounded-md border border-violet-300 bg-violet-50 px-2 py-1.5 pb-5 shadow-sm active:cursor-grabbing"
+                        className={`absolute left-2 right-2 cursor-grab rounded-md border px-2 py-1.5 pb-5 shadow-sm active:cursor-grabbing ${
+                          isDone
+                            ? "border-emerald-300 bg-emerald-50"
+                            : "border-violet-300 bg-violet-50"
+                        } ${selectedScheduledTaskId === task.id ? "ring-2 ring-primary/30" : ""}`}
                         style={{
                           top: `${topIndex * ROW_HEIGHT + 4}px`,
                           height: `${durationHours * ROW_HEIGHT - 8}px`,
                         }}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <p className="truncate text-xs font-medium">{task.title}</p>
-                          <span className="shrink-0 text-[10px] font-medium text-violet-700">
+                          <p
+                            className={`truncate text-xs font-medium ${
+                              isDone ? "text-emerald-900 line-through" : ""
+                            }`}
+                          >
+                            {task.title}
+                          </p>
+                          <span
+                            className={`shrink-0 text-[10px] font-medium ${
+                              isDone ? "text-emerald-700" : "text-violet-700"
+                            }`}
+                          >
                             {timeRange}
                           </span>
                         </div>
@@ -553,7 +793,9 @@ export default function PlannerPage() {
                               startHour: task.startHour,
                             });
                           }}
-                          className="absolute bottom-0 left-0 right-0 flex h-4 items-center justify-center rounded-b-md bg-violet-100/90 text-violet-700"
+                          className={`absolute bottom-0 left-0 right-0 flex h-4 items-center justify-center rounded-b-md ${
+                            isDone ? "bg-emerald-100/90 text-emerald-700" : "bg-violet-100/90 text-violet-700"
+                          }`}
                           aria-label={`Resize ${task.title}`}
                         >
                           <GripVertical className="size-3" />
@@ -631,6 +873,61 @@ export default function PlannerPage() {
           </Card>
         </section>
       </main>
+
+      {selectedScheduledTask ? (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/35 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className={selectedScheduledTask.status === "DONE" ? "line-through text-muted-foreground" : ""}>
+                {selectedScheduledTask.title}
+              </CardTitle>
+              <CardDescription>
+                {selectedScheduledTask.board?.title ?? "Personal"} •{" "}
+                {hourLabel(selectedScheduledTask.startHour)} -{" "}
+                {hourLabel(
+                  Math.min(
+                    selectedScheduledTask.startHour +
+                      Math.max(1, Math.round(selectedScheduledTask.durationMinutes / 60)),
+                    END_HOUR_EXCLUSIVE
+                  )
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <Badge variant={selectedScheduledTask.status === "DONE" ? "secondary" : "outline"}>
+                  {selectedScheduledTask.status}
+                </Badge>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={selectedScheduledTask.status === "DONE"}
+                    onCheckedChange={(checked) =>
+                      void patchTaskStatus(
+                        selectedScheduledTask.id,
+                        checked === true ? "DONE" : "TODO"
+                      )
+                    }
+                  />
+                  Mark as done
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void unscheduleTask(selectedScheduledTask.id)}
+                >
+                  Remove to Tasks
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedScheduledTaskId(null)}>
+                  Close
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       {showAddTaskModal ? (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/35 p-4">
@@ -717,93 +1014,163 @@ export default function PlannerPage() {
       ) : null}
 
       {editTaskForm ? (
-        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/35 p-4">
-          <Card className="w-full max-w-lg overflow-visible">
-            <CardHeader>
-              <CardTitle>Edit Task</CardTitle>
-              <CardDescription>Update task details.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              <input
-                value={editTaskForm.title}
-                onChange={(event) =>
-                  setEditTaskForm((prev) => (prev ? { ...prev, title: event.target.value } : prev))
-                }
-                placeholder="Task title"
-                className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              />
-              <textarea
-                rows={3}
-                value={editTaskForm.description}
-                onChange={(event) =>
-                  setEditTaskForm((prev) => (prev ? { ...prev, description: event.target.value } : prev))
-                }
-                placeholder="Description (optional)"
-                className="rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="relative">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/35 p-4 md:p-6">
+          <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-3 pt-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <Card className="w-full overflow-visible">
+              <CardHeader>
+                <CardTitle>Edit Task</CardTitle>
+                <CardDescription>Update task details.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <input
+                  value={editTaskForm.title}
+                  onChange={(event) =>
+                    setEditTaskForm((prev) => (prev ? { ...prev, title: event.target.value } : prev))
+                  }
+                  placeholder="Task title"
+                  className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+                <textarea
+                  rows={3}
+                  value={editTaskForm.description}
+                  onChange={(event) =>
+                    setEditTaskForm((prev) => (prev ? { ...prev, description: event.target.value } : prev))
+                  }
+                  placeholder="Description (optional)"
+                  className="rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
                   <Button
                     type="button"
                     variant="outline"
                     className="w-full justify-start"
-                    onClick={() => setShowEditDatePicker((prev) => !prev)}
+                    onClick={() => setShowEditTaskDatePanel(true)}
                   >
                     <CalendarDays data-icon="inline-start" />
-                    {format(new Date(`${editTaskForm.dueDate}T00:00:00`), "PPP")}
+                    {editTaskForm.dueDate
+                      ? format(new Date(`${editTaskForm.dueDate}T00:00:00`), "PPP")
+                      : "Select due date"}
                   </Button>
-                  {showEditDatePicker ? (
-                    <div className="absolute left-0 top-11 z-30 rounded-lg border bg-background shadow-lg">
-                      <Calendar
-                        mode="single"
-                        selected={new Date(`${editTaskForm.dueDate}T00:00:00`)}
-                        onSelect={(date) => {
-                          if (!date) return;
-                          setEditTaskForm((prev) =>
-                            prev ? { ...prev, dueDate: toDateInputValue(date) } : prev
-                          );
-                          setShowEditDatePicker(false);
-                        }}
-                      />
-                    </div>
-                  ) : null}
+                  <select
+                    value={editTaskForm.priority}
+                    onChange={(event) =>
+                      setEditTaskForm((prev) =>
+                        prev
+                          ? { ...prev, priority: event.target.value as EditTaskForm["priority"] }
+                          : prev
+                      )
+                    }
+                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <option value="LOW">LOW</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                    <option value="HIGH">HIGH</option>
+                  </select>
                 </div>
-                <select
-                  value={editTaskForm.priority}
-                  onChange={(event) =>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <select
+                    value={editTaskForm.boardId}
+                    onChange={(event) =>
+                      {
+                        const nextBoardId = event.target.value;
+                        if (!nextBoardId) {
+                          setEditColumnOptions([]);
+                        }
+                        setEditTaskForm((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                boardId: nextBoardId,
+                                columnId: nextBoardId ? prev.columnId : "",
+                              }
+                            : prev
+                        );
+                      }
+                    }
+                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <option value="">Personal Task (No Board)</option>
+                    {plannerBoards.map((board) => (
+                      <option key={board.id} value={board.id}>
+                        {board.title}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={editTaskForm.columnId}
+                    onChange={(event) =>
+                      setEditTaskForm((prev) =>
+                        prev ? { ...prev, columnId: event.target.value } : prev
+                      )
+                    }
+                    disabled={!editTaskForm.boardId}
+                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">
+                      {editTaskForm.boardId ? "Select Column" : "No column (personal task)"}
+                    </option>
+                    {editColumnOptions.map((column) => (
+                      <option key={column.id} value={column.id}>
+                        {column.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {editTaskError ? <p className="text-sm text-destructive">{editTaskError}</p> : null}
+
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <Button
+                    variant="destructive"
+                    onClick={deleteTaskFromEdit}
+                    disabled={updatingTask || deletingTask}
+                  >
+                    {deletingTask ? "Deleting..." : "Delete"}
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEditTaskForm(null);
+                        setShowEditTaskDatePanel(false);
+                        setEditTaskDateSnapshot(null);
+                        setEditTaskError(null);
+                      }}
+                      disabled={updatingTask || deletingTask}
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={submitEditTask} disabled={updatingTask || deletingTask}>
+                      {updatingTask ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {showEditTaskDatePanel ? (
+              <TaskDatePickerPanel
+                value={editTaskForm}
+                target={editDatePickerTarget}
+                onTargetChange={setEditDatePickerTarget}
+                onChange={(next) =>
+                  setEditTaskForm((prev) => (prev ? { ...prev, ...next } : prev))
+                }
+                onCancel={() => {
+                  if (editTaskDateSnapshot) {
                     setEditTaskForm((prev) =>
-                      prev
-                        ? { ...prev, priority: event.target.value as EditTaskForm["priority"] }
-                        : prev
-                    )
+                      prev ? { ...prev, ...editTaskDateSnapshot } : prev
+                    );
                   }
-                  className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  <option value="LOW">LOW</option>
-                  <option value="MEDIUM">MEDIUM</option>
-                  <option value="HIGH">HIGH</option>
-                </select>
-              </div>
-
-              {editTaskError ? <p className="text-sm text-destructive">{editTaskError}</p> : null}
-
-              <div className="mt-1 flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setEditTaskForm(null);
-                    setShowEditDatePicker(false);
-                    setEditTaskError(null);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={submitEditTask} disabled={updatingTask}>
-                  {updatingTask ? "Saving..." : "Save"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                  setShowEditTaskDatePanel(false);
+                }}
+                onConfirm={() => {
+                  setEditTaskDateSnapshot(takeEditDateSnapshot(editTaskForm));
+                  setShowEditTaskDatePanel(false);
+                }}
+              />
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>

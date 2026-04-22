@@ -206,19 +206,44 @@ export async function addColumnToBoard(input: {
   const access = await canAccessBoard(input.userId, input.boardId);
   if (!access) return null;
 
-  const lastColumn = await prisma.boardColumn.findFirst({
-    where: { boardId: input.boardId },
-    orderBy: { position: "desc" },
-  });
+  return prisma.$transaction(async (tx) => {
+    const doneColumn = await tx.boardColumn.findFirst({
+      where: { boardId: input.boardId, title: { equals: DONE_COLUMN_TITLE, mode: "insensitive" } },
+      orderBy: { position: "asc" },
+    });
 
-  const position = lastColumn ? lastColumn.position + 1 : 0;
+    if (!doneColumn) {
+      const lastColumn = await tx.boardColumn.findFirst({
+        where: { boardId: input.boardId },
+        orderBy: { position: "desc" },
+      });
+      const position = lastColumn ? lastColumn.position + 1 : 0;
+      return tx.boardColumn.create({
+        data: {
+          boardId: input.boardId,
+          title: input.title,
+          position,
+        },
+      });
+    }
 
-  return prisma.boardColumn.create({
-    data: {
-      boardId: input.boardId,
-      title: input.title,
-      position,
-    },
+    await tx.boardColumn.updateMany({
+      where: {
+        boardId: input.boardId,
+        position: { gte: doneColumn.position },
+      },
+      data: {
+        position: { increment: 1 },
+      },
+    });
+
+    return tx.boardColumn.create({
+      data: {
+        boardId: input.boardId,
+        title: input.title,
+        position: doneColumn.position,
+      },
+    });
   });
 }
 
@@ -243,6 +268,46 @@ export async function renameBoardColumn(input: {
   return prisma.boardColumn.update({
     where: { id: input.columnId },
     data: { title: input.title },
+  });
+}
+
+export async function reorderBoardColumn(input: {
+  userId: string;
+  boardId: string;
+  columnId: string;
+  toIndex: number;
+}) {
+  const access = await canAccessBoard(input.userId, input.boardId);
+  if (!access) return null;
+
+  return prisma.$transaction(async (tx) => {
+    const columns = await tx.boardColumn.findMany({
+      where: { boardId: input.boardId },
+      orderBy: { position: "asc" },
+    });
+    const moving = columns.find((column) => column.id === input.columnId);
+    if (!moving) return null;
+    if (isDoneColumnTitle(moving.title)) {
+      return { ok: true };
+    }
+
+    const movable = columns.filter((column) => !isDoneColumnTitle(column.title));
+    const remaining = movable.filter((column) => column.id !== input.columnId);
+    const safeIndex = Math.max(0, Math.min(input.toIndex, remaining.length));
+    const reorderedMovable = [...remaining];
+    reorderedMovable.splice(safeIndex, 0, moving);
+
+    const doneColumns = columns.filter((column) => isDoneColumnTitle(column.title));
+    const finalColumns: typeof columns = [...reorderedMovable, ...doneColumns];
+
+    for (let i = 0; i < finalColumns.length; i += 1) {
+      await tx.boardColumn.update({
+        where: { id: finalColumns[i].id },
+        data: { position: i },
+      });
+    }
+
+    return { ok: true };
   });
 }
 
@@ -536,6 +601,8 @@ export async function updateTaskForUser(input: {
   startDate?: string | null;
   dueDate?: string | null;
   priority: "LOW" | "MEDIUM" | "HIGH";
+  boardId?: string | null;
+  columnId?: string | null;
   assigneeId?: string | null;
   assigneeIds?: string[];
 }) {
@@ -554,9 +621,57 @@ export async function updateTaskForUser(input: {
         },
       ],
     },
-    select: { id: true, boardId: true },
+    select: { id: true, boardId: true, columnId: true, status: true, position: true },
   });
   if (!task) return null;
+
+  const nextBoardId =
+    input.boardId !== undefined
+      ? input.boardId
+      : task.boardId;
+
+  if (nextBoardId) {
+    const access = await canAccessBoard(input.userId, nextBoardId);
+    if (!access) return null;
+  }
+
+  let nextColumnId: string | null = null;
+  let nextColumnTitle: string | null = null;
+
+  if (nextBoardId) {
+    const requestedColumnId =
+      input.columnId !== undefined
+        ? input.columnId
+        : task.boardId === nextBoardId
+          ? task.columnId
+          : null;
+
+    if (requestedColumnId) {
+      const targetColumn = await prisma.boardColumn.findFirst({
+        where: { id: requestedColumnId, boardId: nextBoardId },
+        select: { id: true, title: true },
+      });
+      if (!targetColumn) return null;
+      nextColumnId = targetColumn.id;
+      nextColumnTitle = targetColumn.title;
+    } else {
+      const fallbackColumn =
+        (await prisma.boardColumn.findFirst({
+          where: { boardId: nextBoardId, NOT: { title: { equals: "Done", mode: "insensitive" } } },
+          orderBy: { position: "asc" },
+          select: { id: true, title: true },
+        })) ??
+        (await prisma.boardColumn.findFirst({
+          where: { boardId: nextBoardId },
+          orderBy: { position: "asc" },
+          select: { id: true, title: true },
+        }));
+
+      if (!fallbackColumn) return null;
+      nextColumnId = fallbackColumn.id;
+      nextColumnTitle = fallbackColumn.title;
+    }
+  }
 
   const normalizedAssigneeIds = normalizeAssigneeIds(
     input.assigneeIds && input.assigneeIds.length > 0
@@ -566,10 +681,10 @@ export async function updateTaskForUser(input: {
         : []
   );
 
-  if (task.boardId && normalizedAssigneeIds.length > 0) {
+  if (nextBoardId && normalizedAssigneeIds.length > 0) {
     const members = await prisma.boardMember.findMany({
       where: {
-        boardId: task.boardId,
+        boardId: nextBoardId,
         userId: { in: normalizedAssigneeIds },
       },
       select: { userId: true },
@@ -578,7 +693,7 @@ export async function updateTaskForUser(input: {
   }
 
   const assignmentIds =
-    task.boardId
+    nextBoardId
       ? normalizedAssigneeIds
       : [input.userId];
 
@@ -592,6 +707,22 @@ export async function updateTaskForUser(input: {
       });
     }
 
+    const isColumnChanged = task.boardId !== nextBoardId || task.columnId !== nextColumnId;
+    let nextPosition = task.position;
+    if (nextBoardId && nextColumnId && isColumnChanged) {
+      const lastTask = await tx.task.findFirst({
+        where: { boardId: nextBoardId, columnId: nextColumnId },
+        orderBy: { position: "desc" },
+        select: { position: true },
+      });
+      nextPosition = lastTask ? lastTask.position + 1 : 0;
+    }
+
+    const nextStatus =
+      nextBoardId && nextColumnTitle
+        ? (isDoneColumnTitle(nextColumnTitle) ? "DONE" : "TODO")
+        : task.status;
+
     return tx.task.update({
       where: { id: input.taskId },
       data: {
@@ -600,6 +731,11 @@ export async function updateTaskForUser(input: {
         startDate: input.startDate ? new Date(input.startDate) : null,
         dueDate: input.dueDate ? new Date(input.dueDate) : null,
         priority: input.priority,
+        boardId: nextBoardId,
+        columnId: nextColumnId,
+        position: nextPosition,
+        status: nextStatus,
+        completedAt: nextStatus === "DONE" ? new Date() : null,
         assigneeId: assignmentIds[0] ?? null,
       },
     });
