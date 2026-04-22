@@ -29,6 +29,12 @@ export async function POST(
       priority: parsed.data.priority
         ? TaskPriority[parsed.data.priority]
         : TaskPriority.MEDIUM,
+      assigneeIds:
+        parsed.data.assigneeIds && parsed.data.assigneeIds.length > 0
+          ? parsed.data.assigneeIds
+          : parsed.data.assigneeId
+            ? [parsed.data.assigneeId]
+            : [userId],
       assigneeId: parsed.data.assigneeId ?? userId,
     });
 

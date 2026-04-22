@@ -24,9 +24,11 @@ export const addTaskSchema = z.object({
   columnId: z.string().cuid(),
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(1000).optional().nullable(),
+  startDate: z.string().datetime().optional().nullable(),
   dueDate: z.string().datetime().optional().nullable(),
   priority: priorityEnum.optional(),
   assigneeId: z.string().cuid().optional().nullable(),
+  assigneeIds: z.array(z.string().cuid()).max(20).optional(),
 });
 
 export const reorderTaskSchema = z.object({
@@ -42,9 +44,11 @@ export const updateTaskStatusSchema = z.object({
 export const updateTaskSchema = z.object({
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(1000).optional().nullable(),
+  startDate: z.string().datetime().optional().nullable(),
   dueDate: z.string().datetime().optional().nullable(),
   priority: priorityEnum,
   assigneeId: z.string().cuid().optional().nullable(),
+  assigneeIds: z.array(z.string().cuid()).max(20).optional(),
 });
 
 export const updateTaskScheduleSchema = z.object({

@@ -17,6 +17,7 @@ import { ArrowLeft, CalendarDays, Pencil, Plus, Settings, UserPlus, Users } from
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -25,20 +26,26 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TaskDatePickerPanel } from "@/components/task-date-picker-panel";
 
 type Member = {
   id: string;
   name: string;
   email: string;
+  avatarUrl?: string | null;
 };
 
 type BoardTask = {
   id: string;
   title: string;
   description: string | null;
+  startDate: string | null;
   dueDate: string | null;
+  plannedStartAt: string | null;
+  plannedDurationMinutes: number | null;
   priority: "LOW" | "MEDIUM" | "HIGH";
   assignee: Member | null;
+  assignees?: { user: Member }[];
   position: number;
 };
 
@@ -69,22 +76,57 @@ function isDoneColumnTitle(title: string) {
   return title.trim().toLowerCase() === DONE_COLUMN_TITLE;
 }
 
+function getInitials(name: string) {
+  const initials = name
+    .split(" ")
+    .map((part) => part.trim().charAt(0))
+    .filter(Boolean)
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  return initials || "U";
+}
+
+function getTaskAssignees(task: BoardTask) {
+  if (task.assignees && task.assignees.length > 0) {
+    return task.assignees.map((item) => item.user);
+  }
+  return task.assignee ? [task.assignee] : [];
+}
+
+function combineDateAndTime(dateString: string, timeString: string) {
+  const date = new Date(`${dateString}T00:00:00`);
+  const [hour, minute] = timeString.split(":").map(Number);
+  date.setHours(hour, minute, 0, 0);
+  return date;
+}
+
 type TaskForm = {
   title: string;
   description: string;
   dueDate: string;
   priority: "LOW" | "MEDIUM" | "HIGH";
-  assigneeId: string;
+  assigneeIds: string[];
 };
 
 type CardEditForm = {
   taskId: string;
   title: string;
   description: string;
+  startDate: string;
   dueDate: string;
   priority: "LOW" | "MEDIUM" | "HIGH";
-  assigneeId: string;
+  assigneeIds: string[];
+  useDateRange: boolean;
+  useTimeRange: boolean;
+  startTime: string;
+  endTime: string;
 };
+
+type CardPickerSnapshot = Pick<
+  CardEditForm,
+  "startDate" | "dueDate" | "useDateRange" | "useTimeRange" | "startTime" | "endTime"
+>;
 
 type BoardSettingsForm = {
   title: string;
@@ -139,11 +181,13 @@ export default function BoardDetailPage() {
     description: "",
     dueDate: "",
     priority: "MEDIUM",
-    assigneeId: "",
+    assigneeIds: [],
   });
   const [taskModalError, setTaskModalError] = useState<string | null>(null);
   const [showCardModal, setShowCardModal] = useState(false);
   const [showCardDueDatePicker, setShowCardDueDatePicker] = useState(false);
+  const [cardDatePickerTarget, setCardDatePickerTarget] = useState<"start" | "due">("due");
+  const [cardPickerSnapshot, setCardPickerSnapshot] = useState<CardPickerSnapshot | null>(null);
   const [cardEditForm, setCardEditForm] = useState<CardEditForm | null>(null);
   const [cardEditError, setCardEditError] = useState<string | null>(null);
 
@@ -165,6 +209,15 @@ export default function BoardDetailPage() {
     dueDate: "",
   });
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+
+  const takeCardPickerSnapshot = (form: CardEditForm): CardPickerSnapshot => ({
+    startDate: form.startDate,
+    dueDate: form.dueDate,
+    useDateRange: form.useDateRange,
+    useTimeRange: form.useTimeRange,
+    startTime: form.startTime,
+    endTime: form.endTime,
+  });
 
   const members = board?.members.map((member) => member.user) ?? [];
   const allTasks = (board?.columns ?? []).flatMap((column) =>
@@ -349,7 +402,7 @@ export default function BoardDetailPage() {
         description: taskForm.description.trim() || null,
         dueDate: taskForm.dueDate ? new Date(taskForm.dueDate).toISOString() : null,
         priority: taskForm.priority,
-        assigneeId: taskForm.assigneeId || null,
+        assigneeIds: taskForm.assigneeIds,
       }),
     });
     setSaving(false);
@@ -365,7 +418,7 @@ export default function BoardDetailPage() {
       description: "",
       dueDate: "",
       priority: "MEDIUM",
-      assigneeId: "",
+      assigneeIds: [],
     });
     await fetchBoard();
   };
@@ -373,15 +426,33 @@ export default function BoardDetailPage() {
   const openCardModal = (task: BoardTask) => {
     setCardEditError(null);
     setShowCardDueDatePicker(false);
-    setCardEditForm({
+    setCardDatePickerTarget("due");
+    const assignees = getTaskAssignees(task);
+    const dueDate = task.dueDate ? task.dueDate.slice(0, 10) : "";
+    const startDate = task.startDate ? task.startDate.slice(0, 10) : "";
+    const plannedStart = task.plannedStartAt ? new Date(task.plannedStartAt) : null;
+    const startTime = plannedStart ? format(plannedStart, "HH:mm") : "11:00";
+    const endTime =
+      plannedStart && task.plannedDurationMinutes
+        ? format(new Date(plannedStart.getTime() + task.plannedDurationMinutes * 60_000), "HH:mm")
+        : "12:00";
+    const nextForm: CardEditForm = {
       taskId: task.id,
       title: task.title,
       description: task.description ?? "",
-      dueDate: task.dueDate ? task.dueDate.slice(0, 10) : "",
+      startDate,
+      dueDate,
       priority: task.priority,
-      assigneeId: task.assignee?.id ?? "",
-    });
+      assigneeIds: assignees.map((member) => member.id),
+      useDateRange: Boolean(startDate),
+      useTimeRange: Boolean(task.plannedStartAt && task.plannedDurationMinutes),
+      startTime,
+      endTime,
+    };
+    setCardEditForm(nextForm);
+    setCardPickerSnapshot(takeCardPickerSnapshot(nextForm));
     setShowCardModal(true);
+    setShowCardDueDatePicker(true);
   };
 
   const saveCardEdit = async () => {
@@ -393,26 +464,87 @@ export default function BoardDetailPage() {
 
     setCardEditError(null);
     setSaving(true);
+
+    if (!cardEditForm.dueDate) {
+      setSaving(false);
+      setCardEditError("Due date is required.");
+      return;
+    }
+
+    if (cardEditForm.useDateRange && !cardEditForm.startDate) {
+      setSaving(false);
+      setCardEditError("Start date is required when Start date toggle is active.");
+      return;
+    }
+
+    const dueAt = cardEditForm.useTimeRange
+      ? combineDateAndTime(
+          cardEditForm.dueDate,
+          cardEditForm.useDateRange ? cardEditForm.endTime : cardEditForm.startTime
+        )
+      : new Date(`${cardEditForm.dueDate}T00:00:00`);
+
+    const startAt = cardEditForm.useDateRange
+      ? cardEditForm.useTimeRange
+        ? combineDateAndTime(cardEditForm.startDate, cardEditForm.startTime)
+        : new Date(`${cardEditForm.startDate}T00:00:00`)
+      : null;
+
+    if (cardEditForm.useDateRange && startAt && dueAt.getTime() < startAt.getTime()) {
+      setSaving(false);
+      setCardEditError("Due date/time must be later than start date/time.");
+      return;
+    }
+
+    const assigneeIds = cardEditForm.assigneeIds;
     const response = await fetch(`/api/tasks/${cardEditForm.taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: cardEditForm.title.trim(),
         description: cardEditForm.description.trim() || null,
-        dueDate: cardEditForm.dueDate ? new Date(cardEditForm.dueDate).toISOString() : null,
+        startDate: startAt ? startAt.toISOString() : null,
+        dueDate: dueAt.toISOString(),
         priority: cardEditForm.priority,
-        assigneeId: cardEditForm.assigneeId || null,
+        assigneeIds,
       }),
+    });
+
+    if (!response.ok) {
+      setSaving(false);
+      setCardEditError("Failed to update task.");
+      return;
+    }
+
+    const schedulePayload = cardEditForm.useTimeRange
+      ? (() => {
+          const scheduleStart = startAt ?? combineDateAndTime(cardEditForm.dueDate, cardEditForm.startTime);
+          const scheduleEnd = cardEditForm.useDateRange
+            ? dueAt
+            : new Date(scheduleStart.getTime() + 60 * 60_000);
+          const duration = Math.max(30, Math.round((scheduleEnd.getTime() - scheduleStart.getTime()) / 60000));
+          return {
+            plannedStartAt: scheduleStart.toISOString(),
+            plannedDurationMinutes: duration,
+          };
+        })()
+      : { plannedStartAt: null, plannedDurationMinutes: null };
+
+    const scheduleResponse = await fetch(`/api/tasks/${cardEditForm.taskId}/schedule`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(schedulePayload),
     });
     setSaving(false);
 
-    if (!response.ok) {
-      setCardEditError("Failed to update task.");
+    if (!scheduleResponse.ok) {
+      setCardEditError("Task saved, but failed to update time range.");
       return;
     }
 
     setShowCardModal(false);
     setShowCardDueDatePicker(false);
+    setCardPickerSnapshot(null);
     setCardEditForm(null);
     await fetchBoard();
   };
@@ -437,6 +569,7 @@ export default function BoardDetailPage() {
 
     setShowCardModal(false);
     setShowCardDueDatePicker(false);
+    setCardPickerSnapshot(null);
     setCardEditForm(null);
     await fetchBoard();
   };
@@ -577,21 +710,19 @@ export default function BoardDetailPage() {
         {showBoardMembers ? (
           <div className="flex flex-wrap items-center justify-end gap-2">
             {members.map((member) => {
-              const initials = member.name
-                .split(" ")
-                .map((part) => part.charAt(0))
-                .join("")
-                .slice(0, 2)
-                .toUpperCase();
-
               return (
                 <div
                   key={member.id}
                   title={`${member.name} (${member.email})`}
                   className="flex items-center gap-2 rounded-full border bg-background px-2 py-1"
                 >
-                  <span className="grid size-7 place-items-center rounded-full bg-muted text-xs font-semibold">
-                    {initials || "U"}
+                  <span className="grid size-7 place-items-center overflow-hidden rounded-full bg-muted text-xs font-semibold">
+                    {member.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={member.avatarUrl} alt={member.name} className="size-full object-cover" />
+                    ) : (
+                      getInitials(member.name)
+                    )}
                   </span>
                   <span className="hidden text-xs text-muted-foreground sm:inline">{member.name}</span>
                 </div>
@@ -684,7 +815,30 @@ export default function BoardDetailPage() {
                         {task.dueDate ? (
                           <Badge variant="outline">{format(new Date(task.dueDate), "MMM d")}</Badge>
                         ) : null}
-                        {task.assignee ? <Badge variant="outline">{task.assignee.name}</Badge> : null}
+                        {getTaskAssignees(task).length > 0 ? (
+                          <div className="ml-auto flex -space-x-2">
+                            {getTaskAssignees(task).slice(0, 4).map((member) => (
+                              <div
+                                key={member.id}
+                                title={member.name}
+                                className="size-6 overflow-hidden rounded-full border-2 border-background bg-muted"
+                              >
+                                {member.avatarUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={member.avatarUrl}
+                                    alt={member.name}
+                                    className="size-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="grid size-full place-items-center text-[10px] font-semibold">
+                                    {getInitials(member.name)}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ))}
@@ -773,7 +927,12 @@ export default function BoardDetailPage() {
                               {task.dueDate ? format(new Date(task.dueDate), "MMM d, yyyy") : "-"}
                             </td>
                             <td className="px-3 py-3 text-muted-foreground">
-                              {task.assignee?.name ?? "Unassigned"}
+                              {(() => {
+                                const assignees = getTaskAssignees(task);
+                                return assignees.length > 0
+                                  ? assignees.map((member) => member.name).join(", ")
+                                  : "Unassigned";
+                              })()}
                             </td>
                             <td className="px-3 py-3 text-right">
                               <button
@@ -867,7 +1026,10 @@ export default function BoardDetailPage() {
                           <div className="border-r px-4 py-3">
                             <p className="text-sm font-medium">{task.title}</p>
                             <p className="text-xs text-muted-foreground">
-                              {task.assignee?.name ?? "Unassigned"} • {task.columnTitle}
+                              {(() => {
+                                const assignees = getTaskAssignees(task);
+                                return `${assignees.length > 0 ? assignees.map((member) => member.name).join(", ") : "Unassigned"} • ${task.columnTitle}`;
+                              })()}
                             </p>
                           </div>
                           <div className="relative h-14">
@@ -952,7 +1114,10 @@ export default function BoardDetailPage() {
                     <p className="text-sm font-medium">{task.title}</p>
                     <p className="text-xs text-muted-foreground">
                       {task.columnTitle}
-                      {task.assignee ? ` • ${task.assignee.name}` : ""}
+                      {(() => {
+                        const assignees = getTaskAssignees(task);
+                        return assignees.length > 0 ? ` • ${assignees.map((member) => member.name).join(", ")}` : "";
+                      })()}
                     </p>
                   </div>
                 ))}
@@ -1028,18 +1193,33 @@ export default function BoardDetailPage() {
                   <option value="HIGH">HIGH</option>
                 </select>
               </div>
-              <select
-                value={taskForm.assigneeId}
-                onChange={(event) => setTaskForm((prev) => ({ ...prev, assigneeId: event.target.value }))}
-                className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="">Unassigned</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name} ({member.email})
-                  </option>
-                ))}
-              </select>
+              <div className="rounded-md border bg-background p-2">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Assignees
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {members.map((member) => {
+                    const checked = taskForm.assigneeIds.includes(member.id);
+                    return (
+                      <label key={member.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) =>
+                            setTaskForm((prev) => ({
+                              ...prev,
+                              assigneeIds:
+                                value === true
+                                  ? [...prev.assigneeIds, member.id]
+                                  : prev.assigneeIds.filter((id) => id !== member.id),
+                            }))
+                          }
+                        />
+                        <span>{member.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               {taskModalError ? <p className="text-sm text-destructive">{taskModalError}</p> : null}
               <div className="mt-1 flex justify-end gap-2">
                 <Button
@@ -1061,8 +1241,9 @@ export default function BoardDetailPage() {
       ) : null}
 
       {showCardModal && cardEditForm ? (
-        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/35 p-4">
-          <Card className="w-full max-w-lg overflow-visible">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/35 p-4 md:p-6">
+          <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-3 pt-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <Card className="w-full overflow-visible">
             <CardHeader>
               <CardTitle>Edit Task</CardTitle>
               <CardDescription>Update card information.</CardDescription>
@@ -1093,30 +1274,18 @@ export default function BoardDetailPage() {
                     type="button"
                     variant="outline"
                     className="w-full justify-start"
-                    onClick={() => setShowCardDueDatePicker((prev) => !prev)}
+                    onClick={() => {
+                      if (!showCardDueDatePicker && cardEditForm) {
+                        setCardPickerSnapshot(takeCardPickerSnapshot(cardEditForm));
+                      }
+                      setShowCardDueDatePicker(true);
+                    }}
                   >
                     <CalendarDays data-icon="inline-start" />
                     {cardEditForm.dueDate
                       ? format(new Date(`${cardEditForm.dueDate}T00:00:00`), "PPP")
                       : "Select due date (optional)"}
                   </Button>
-                  {showCardDueDatePicker ? (
-                    <div className="absolute left-0 top-11 z-30 rounded-lg border bg-background shadow-lg">
-                      <Calendar
-                        mode="single"
-                        selected={
-                          cardEditForm.dueDate ? new Date(`${cardEditForm.dueDate}T00:00:00`) : undefined
-                        }
-                        onSelect={(date) => {
-                          if (!date) return;
-                          setCardEditForm((prev) =>
-                            prev ? { ...prev, dueDate: format(date, "yyyy-MM-dd") } : prev
-                          );
-                          setShowCardDueDatePicker(false);
-                        }}
-                      />
-                    </div>
-                  ) : null}
                 </div>
                 <select
                   value={cardEditForm.priority}
@@ -1134,22 +1303,38 @@ export default function BoardDetailPage() {
                   <option value="HIGH">HIGH</option>
                 </select>
               </div>
-              <select
-                value={cardEditForm.assigneeId}
-                onChange={(event) =>
-                  setCardEditForm((prev) =>
-                    prev ? { ...prev, assigneeId: event.target.value } : prev
-                  )
-                }
-                className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="">Unassigned</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name} ({member.email})
-                  </option>
-                ))}
-              </select>
+
+              <div className="rounded-md border bg-background p-2">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Assignees
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {members.map((member) => {
+                    const checked = cardEditForm.assigneeIds.includes(member.id);
+                    return (
+                      <label key={member.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) =>
+                            setCardEditForm((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    assigneeIds:
+                                      value === true
+                                        ? [...prev.assigneeIds, member.id]
+                                        : prev.assigneeIds.filter((id) => id !== member.id),
+                                  }
+                                : prev
+                            )
+                          }
+                        />
+                        <span>{member.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               {cardEditError ? <p className="text-sm text-destructive">{cardEditError}</p> : null}
               <div className="mt-1 flex items-center justify-between gap-2">
                 <Button variant="destructive" onClick={deleteCardTask} disabled={saving}>
@@ -1161,6 +1346,7 @@ export default function BoardDetailPage() {
                   onClick={() => {
                     setShowCardModal(false);
                     setShowCardDueDatePicker(false);
+                    setCardPickerSnapshot(null);
                     setCardEditForm(null);
                   }}
                 >
@@ -1173,6 +1359,34 @@ export default function BoardDetailPage() {
               </div>
             </CardContent>
           </Card>
+          {showCardDueDatePicker ? (
+            <TaskDatePickerPanel
+              value={cardEditForm}
+              target={cardDatePickerTarget}
+              onTargetChange={setCardDatePickerTarget}
+              onChange={(next) => setCardEditForm((prev) => (prev ? { ...prev, ...next } : prev))}
+              onCancel={() => {
+                if (cardPickerSnapshot) {
+                  setCardEditForm((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          ...cardPickerSnapshot,
+                        }
+                      : prev
+                  );
+                }
+                setShowCardDueDatePicker(false);
+              }}
+              onConfirm={() => {
+                if (cardEditForm) {
+                  setCardPickerSnapshot(takeCardPickerSnapshot(cardEditForm));
+                }
+                setShowCardDueDatePicker(false);
+              }}
+            />
+          ) : null}
+          </div>
         </div>
       ) : null}
 
