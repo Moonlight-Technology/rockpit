@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { format } from "date-fns";
-import { Plus, PlaneTakeoff, CalendarDays } from "lucide-react";
+import { Plus, PlaneTakeoff, CalendarDays, Menu } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Task = {
@@ -173,6 +172,7 @@ export default function Home() {
   const [selectedTaskError, setSelectedTaskError] = useState<string | null>(null);
   const [savingSelectedTask, setSavingSelectedTask] = useState(false);
   const [deletingSelectedTask, setDeletingSelectedTask] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const previewBoards = boards.slice(0, 4);
   const openTasks = tasks.filter((task) => task.status !== "DONE");
   const previewTasks = openTasks.slice(0, 4);
@@ -498,7 +498,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f9fafc_0%,#f3f5fa_48%,#eef2f9_100%)]">
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
-        <header className="flex flex-wrap items-center justify-between gap-3">
+        <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
               RockPit
@@ -506,8 +506,11 @@ export default function Home() {
             <p className="text-sm text-muted-foreground">
               Organize your week with one clear dashboard.
             </p>
+            <p className="text-xs text-muted-foreground md:hidden">
+              {format(new Date(), "EEEE, MMM d")}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="hidden items-center gap-2 md:flex">
             <PwaInstallButton />
             <Button
               size="sm"
@@ -530,38 +533,106 @@ export default function Home() {
               Sign Out
             </Button>
           </div>
+          <div className="relative md:hidden">
+            {showMobileMenu ? (
+              <button
+                type="button"
+                aria-label="Close menu backdrop"
+                className="fixed inset-0 z-30 cursor-default bg-black/20"
+                onClick={() => setShowMobileMenu(false)}
+              />
+            ) : null}
+            <Button
+              size="icon"
+              variant="outline"
+              aria-label="Open menu"
+              onClick={() => setShowMobileMenu((prev) => !prev)}
+              className="relative z-40"
+            >
+              <Menu />
+            </Button>
+            {showMobileMenu ? (
+              <Card className="absolute right-0 top-11 z-40 w-64 shadow-lg">
+                <CardContent className="flex flex-col gap-1 p-2">
+                  <PwaInstallButton />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      router.push("/planner");
+                    }}
+                  >
+                    <CalendarDays data-icon="inline-start" />
+                    Planner
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      router.push("/helicopter");
+                    }}
+                  >
+                    <PlaneTakeoff data-icon="inline-start" />
+                    Helicopter View
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      void signOut({ callbackUrl: "/login" });
+                    }}
+                  >
+                    Sign Out
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
         </header>
 
         <section className="grid flex-1 gap-6 lg:grid-cols-[22rem_1fr]">
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle>Calendar</CardTitle>
-              <CardDescription>
-                Focus date: {format(selectedDate, "PPP")}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={(date) => setSelectedDate(date ?? new Date())}
-                className="w-full rounded-lg border [&_.rdp-months]:w-full [&_.rdp-month]:w-full [&_.rdp-table]:w-full"
-                modifiers={{ hasTask: taskDates }}
-                modifiersClassNames={{
-                  hasTask:
-                    "relative after:absolute after:bottom-1 after:left-1/2 after:size-1 after:-translate-x-1/2 after:rounded-full after:bg-primary",
-                }}
-              />
-              <Separator />
-              <div className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">Today Progress</span>
+          <div className="flex flex-col gap-4">
+            <Card className="hidden h-fit md:block">
+              <CardHeader>
+                <CardTitle>Calendar</CardTitle>
+                <CardDescription>
+                  Focus date: {format(selectedDate, "PPP")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => setSelectedDate(date ?? new Date())}
+                  className="w-full rounded-lg border [&_.rdp-months]:w-full [&_.rdp-month]:w-full [&_.rdp-table]:w-full"
+                  modifiers={{ hasTask: taskDates }}
+                  modifiersClassNames={{
+                    hasTask:
+                      "relative after:absolute after:bottom-1 after:left-1/2 after:size-1 after:-translate-x-1/2 after:rounded-full after:bg-primary",
+                  }}
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="h-fit">
+              <CardHeader>
+                <CardTitle>Today Progress</CardTitle>
+                <CardDescription>Track your completion for today.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-1 text-sm">
                 <Progress value={progressValue} />
                 <span className="text-muted-foreground">
                   {doneCount}/{tasks.length} tasks done
                 </span>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
 
           <Card className="min-h-[32rem]">
             <CardHeader>
