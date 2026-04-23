@@ -21,6 +21,16 @@ type Task = {
   board: { id: string; title: string } | null;
 };
 
+function getOverdueDays(dueDate: string) {
+  const due = new Date(dueDate);
+  const today = new Date();
+  due.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  const msDiff = today.getTime() - due.getTime();
+  if (msDiff <= 0) return 0;
+  return Math.floor(msDiff / 86_400_000);
+}
+
 export default function AllTasksPage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -45,6 +55,24 @@ export default function AllTasksPage() {
 
   const doneCount = useMemo(
     () => tasks.filter((task) => task.status === "DONE").length,
+    [tasks]
+  );
+  const sortedTasks = useMemo(
+    () =>
+      [...tasks].sort((a, b) => {
+        if (a.status !== b.status) return a.status === "DONE" ? 1 : -1;
+
+        const aIsOverdue = a.status !== "DONE" && a.dueDate ? getOverdueDays(a.dueDate) > 0 : false;
+        const bIsOverdue = b.status !== "DONE" && b.dueDate ? getOverdueDays(b.dueDate) > 0 : false;
+        if (aIsOverdue !== bIsOverdue) return aIsOverdue ? -1 : 1;
+
+        if (a.dueDate && b.dueDate) {
+          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        }
+        if (a.dueDate) return -1;
+        if (b.dueDate) return 1;
+        return a.title.localeCompare(b.title);
+      }),
     [tasks]
   );
 
@@ -96,11 +124,10 @@ export default function AllTasksPage() {
               <p className="text-sm text-muted-foreground">No tasks assigned to your account yet.</p>
             ) : null}
 
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className="block cursor-default rounded-lg border bg-card px-3 py-3"
-              >
+            {sortedTasks.map((task) => {
+              const overdueDays = task.status !== "DONE" && task.dueDate ? getOverdueDays(task.dueDate) : 0;
+              return (
+                <div key={task.id} className="block cursor-default rounded-lg border bg-card px-3 py-3">
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
@@ -129,6 +156,11 @@ export default function AllTasksPage() {
                   >
                     {task.priority}
                   </Badge>
+                  {overdueDays > 0 ? (
+                    <Badge variant="destructive">
+                      Overdue {overdueDays}d
+                    </Badge>
+                  ) : null}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {task.board?.title ?? "Personal Task"}
@@ -142,8 +174,9 @@ export default function AllTasksPage() {
                     </Button>
                   </div>
                 ) : null}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       </main>

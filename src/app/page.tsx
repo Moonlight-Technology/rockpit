@@ -146,6 +146,16 @@ function boardProgressPercent(board: BoardListItem) {
   return Math.round((doneTasks / total) * 100);
 }
 
+function getOverdueDays(dueDate: string) {
+  const due = new Date(dueDate);
+  const today = new Date();
+  due.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  const msDiff = today.getTime() - due.getTime();
+  if (msDiff <= 0) return 0;
+  return Math.floor(msDiff / 86_400_000);
+}
+
 export default function Home() {
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -174,7 +184,24 @@ export default function Home() {
   const [deletingSelectedTask, setDeletingSelectedTask] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const previewBoards = boards.slice(0, 4);
-  const openTasks = tasks.filter((task) => task.status !== "DONE");
+  const openTasks = useMemo(
+    () =>
+      tasks
+        .filter((task) => task.status !== "DONE")
+        .sort((a, b) => {
+          const aIsOverdue = a.dueDate ? getOverdueDays(a.dueDate) > 0 : false;
+          const bIsOverdue = b.dueDate ? getOverdueDays(b.dueDate) > 0 : false;
+          if (aIsOverdue !== bIsOverdue) return aIsOverdue ? -1 : 1;
+
+          if (a.dueDate && b.dueDate) {
+            return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+          }
+          if (a.dueDate) return -1;
+          if (b.dueDate) return 1;
+          return a.title.localeCompare(b.title);
+        }),
+    [tasks]
+  );
   const previewTasks = openTasks.slice(0, 4);
 
   const doneCount = useMemo(
@@ -724,12 +751,14 @@ export default function Home() {
                         No open tasks assigned to your account.
                       </p>
                     ) : null}
-                    {previewTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        onClick={() => openSelectedTaskModal(task)}
-                        className="block cursor-pointer rounded-lg border bg-card px-3 py-3 hover:bg-muted/40"
-                      >
+                    {previewTasks.map((task) => {
+                      const overdueDays = task.dueDate ? getOverdueDays(task.dueDate) : 0;
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={() => openSelectedTaskModal(task)}
+                          className="block cursor-pointer rounded-lg border bg-card px-3 py-3 hover:bg-muted/40"
+                        >
                         <div className="flex items-center gap-3">
                           <button
                             type="button"
@@ -761,6 +790,9 @@ export default function Home() {
                           >
                             {task.priority}
                           </Badge>
+                          {overdueDays > 0 ? (
+                            <Badge variant="destructive">Overdue {overdueDays}d</Badge>
+                          ) : null}
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {task.board?.title ?? "Personal Task"}
@@ -769,8 +801,9 @@ export default function Home() {
                             ? ` • Due ${format(new Date(task.dueDate), "MMM d, yyyy")}`
                             : ""}
                         </p>
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                     </div>
                     <div className="flex justify-end">
                       <Button variant="outline" size="sm" onClick={() => router.push("/tasks")}>
