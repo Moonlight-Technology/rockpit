@@ -1,2 +1,2 @@
 -- DropIndex
-DROP INDEX "public"."Board_closedAt_idx";
+DROP INDEX IF EXISTS "public"."Board_closedAt_idx";
