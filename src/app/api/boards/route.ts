@@ -7,13 +7,17 @@ import {
 } from "@/lib/api";
 import { createBoardSchema } from "@/lib/validators/board";
 
-export async function GET() {
+export async function GET(req: Request) {
   const userId = await getSessionUserId();
   if (!userId) {
     return unauthorized();
   }
 
-  const boards = await listBoardsForUser(userId);
+  const { searchParams } = new URL(req.url);
+  const scope = searchParams.get("scope");
+  const boards = await listBoardsForUser(userId, {
+    includeClosed: scope === "all",
+  });
   return NextResponse.json({ ok: true, data: boards });
 }
 

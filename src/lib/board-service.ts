@@ -56,9 +56,14 @@ const boardDetailInclude = {
   },
 } satisfies Prisma.BoardInclude;
 
-export async function listBoardsForUser(userId: string) {
+export async function listBoardsForUser(
+  userId: string,
+  options?: { includeClosed?: boolean }
+) {
+  const includeClosed = options?.includeClosed === true;
   return prisma.board.findMany({
     where: {
+      ...(includeClosed ? {} : { closedAt: null }),
       OR: [{ ownerId: userId }, { members: { some: { userId } } }],
     },
     include: boardSummaryInclude,
@@ -180,6 +185,7 @@ export async function canAccessBoard(userId: string, boardId: string) {
   const board = await prisma.board.findFirst({
     where: {
       id: boardId,
+      closedAt: null,
       OR: [{ ownerId: userId }, { members: { some: { userId } } }],
     },
     select: { id: true },
@@ -191,11 +197,26 @@ export async function getBoardDetailForUser(userId: string, boardId: string) {
   const board = await prisma.board.findFirst({
     where: {
       id: boardId,
+      closedAt: null,
       OR: [{ ownerId: userId }, { members: { some: { userId } } }],
     },
     include: boardDetailInclude,
   });
   return board;
+}
+
+export async function closeBoardForUser(input: { userId: string; boardId: string }) {
+  const board = await prisma.board.findUnique({
+    where: { id: input.boardId },
+    select: { id: true, ownerId: true, closedAt: true },
+  });
+  if (!board || board.closedAt) return null;
+  if (board.ownerId !== input.userId) return { error: "OWNER_ONLY" as const };
+
+  return prisma.board.update({
+    where: { id: input.boardId },
+    data: { closedAt: new Date() },
+  });
 }
 
 export async function addColumnToBoard(input: {
@@ -428,6 +449,7 @@ export async function listAssignedTasksForUser(userId: string) {
         { OR: [
         {
           board: {
+            closedAt: null,
             OR: [{ ownerId: userId }, { members: { some: { userId } } }],
           },
         },
@@ -464,6 +486,7 @@ export async function listAllTasksForUser(userId: string) {
       OR: [
         {
           board: {
+            closedAt: null,
             OR: [{ ownerId: userId }, { members: { some: { userId } } }],
           },
         },
@@ -511,6 +534,7 @@ export async function updateTaskStatusForUser(input: {
       OR: [
         {
           board: {
+            closedAt: null,
             OR: [{ ownerId: input.userId }, { members: { some: { userId: input.userId } } }],
           },
         },
@@ -612,6 +636,7 @@ export async function updateTaskForUser(input: {
       OR: [
         {
           board: {
+            closedAt: null,
             OR: [{ ownerId: input.userId }, { members: { some: { userId: input.userId } } }],
           },
         },
@@ -754,6 +779,7 @@ export async function updateTaskScheduleForUser(input: {
       OR: [
         {
           board: {
+            closedAt: null,
             OR: [{ ownerId: input.userId }, { members: { some: { userId: input.userId } } }],
           },
         },
@@ -788,6 +814,7 @@ export async function deleteTaskForUser(input: { userId: string; taskId: string 
       OR: [
         {
           board: {
+            closedAt: null,
             OR: [{ ownerId: input.userId }, { members: { some: { userId: input.userId } } }],
           },
         },
