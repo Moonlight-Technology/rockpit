@@ -10,7 +10,9 @@ import {
   ChevronRight,
   Clock3,
   GripVertical,
+  Play,
   Plus,
+  Square,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -73,8 +75,8 @@ type ResizeState = {
   startHour: number;
 };
 
-const START_HOUR = 8;
-const END_HOUR_EXCLUSIVE = 20;
+const START_HOUR = 6;
+const END_HOUR_EXCLUSIVE = 24;
 const ROW_HEIGHT = 56;
 
 const initialTaskForm: AddTaskForm = {
@@ -120,6 +122,14 @@ function parseQueryDate(value: string) {
   return Number.isNaN(parsed.getTime()) ? startOfDay(new Date()) : startOfDay(parsed);
 }
 
+function formatElapsed(ms: number) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
 function PlannerPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -144,6 +154,15 @@ function PlannerPageContent() {
   const [resizing, setResizing] = useState<ResizeState | null>(null);
   const [draftDurationMinutes, setDraftDurationMinutes] = useState<Record<string, number>>({});
   const [selectedScheduledTaskId, setSelectedScheduledTaskId] = useState<string | null>(null);
+  const [timerModeEnabled, setTimerModeEnabled] = useState(false);
+  const [timerTitle, setTimerTitle] = useState("");
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerStartAt, setTimerStartAt] = useState<Date | null>(null);
+  const [timerElapsedMs, setTimerElapsedMs] = useState(0);
+  const [timerSaving, setTimerSaving] = useState(false);
+  const [timerError, setTimerError] = useState<string | null>(null);
+  const [timerPriority, setTimerPriority] = useState<"LOW" | "MEDIUM" | "HIGH">("MEDIUM");
+  const [timerBoardId, setTimerBoardId] = useState("");
 
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [showAddDatePicker, setShowAddDatePicker] = useState(false);
@@ -234,6 +253,14 @@ function PlannerPageContent() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!timerRunning || !timerStartAt) return;
+    const interval = window.setInterval(() => {
+      setTimerElapsedMs(Date.now() - timerStartAt.getTime());
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [timerRunning, timerStartAt]);
+
   const hours = useMemo(
     () => Array.from({ length: END_HOUR_EXCLUSIVE - START_HOUR }, (_, idx) => START_HOUR + idx),
     []
@@ -263,6 +290,15 @@ function PlannerPageContent() {
         .sort((a, b) => a.startHour - b.startHour),
     [dueOnSelectedDate, draftDurationMinutes, selectedDate]
   );
+  const scheduledBlocksByHour = useMemo(() => {
+    const map = new Map<number, string[]>();
+    for (const task of scheduledBlocks) {
+      const list = map.get(task.startHour) ?? [];
+      list.push(task.id);
+      map.set(task.startHour, list);
+    }
+    return map;
+  }, [scheduledBlocks]);
 
   const unscheduledTasks = useMemo(
     () =>
@@ -294,9 +330,30 @@ function PlannerPageContent() {
     return response.ok;
   };
 
+  const fetchDefaultColumnId = async (boardId: string) => {
+    const response = await fetch(`/api/boards/${boardId}`, { cache: "no-store" });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.ok) return null;
+    const columns: { id: string; title: string }[] = result.data.columns ?? [];
+    const fallback =
+      columns.find((column) => column.title.trim().toLowerCase() !== "done") ?? columns[0];
+    return fallback?.id ?? null;
+  };
+
   const moveTaskToHour = async (taskId: string, hour: number) => {
     const nextDate = setMinutes(setHours(new Date(selectedDate), hour), 0);
     const snapshot = tasks;
+    const sameHourCount = snapshot.filter((task) => {
+      if (!task.plannedStartAt) return false;
+      if (task.id === taskId) return false;
+      const startAt = new Date(task.plannedStartAt);
+      return isSameDay(startAt, selectedDate) && startAt.getHours() === hour;
+    }).length;
+    if (sameHourCount >= 2) {
+      window.alert("Fokus pada satu perjaan agar efektif, dua masih ok lah ya...");
+      return;
+    }
+
     const existingTask = snapshot.find((task) => task.id === taskId);
     const durationMinutes = Math.max(60, existingTask?.plannedDurationMinutes ?? 60);
 
@@ -659,6 +716,96 @@ function PlannerPageContent() {
     await fetchTasks();
   };
 
+  const startTimerSession = () => {
+    if (!timerTitle.trim()) {
+      setTimerError("Project title is required.");
+      return;
+    }
+    const startAt = new Date();
+    setTimerError(null);
+    setTimerStartAt(startAt);
+    setTimerElapsedMs(0);
+    setTimerRunning(true);
+  };
+
+  const stopTimerSession = async () => {
+    if (!timerStartAt || !timerRunning) return;
+    const targetBoardId = timerBoardId;
+    const targetColumnId = targetBoardId
+      ? await fetchDefaultColumnId(targetBoardId)
+      : null;
+    if (targetBoardId && !targetColumnId) {
+      setTimerError("Selected board has no available column.");
+      return;
+    }
+
+    const endAt = new Date();
+    const durationMs = Math.max(1000, endAt.getTime() - timerStartAt.getTime());
+    const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
+    setTimerSaving(true);
+    setTimerError(null);
+
+    const createResponse =
+      targetBoardId && targetColumnId
+        ? await fetch(`/api/boards/${targetBoardId}/tasks`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              columnId: targetColumnId,
+              title: timerTitle.trim(),
+              description: `Tracked via Timer Mode (${formatElapsed(durationMs)}).`,
+              startDate: timerStartAt.toISOString(),
+              dueDate: endAt.toISOString(),
+              priority: timerPriority,
+            }),
+          })
+        : await fetch("/api/tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: timerTitle.trim(),
+              description: `Tracked via Timer Mode (${formatElapsed(durationMs)}).`,
+              startDate: timerStartAt.toISOString(),
+              dueDate: endAt.toISOString(),
+              priority: timerPriority,
+            }),
+          });
+
+    const createResult = await createResponse.json().catch(() => null);
+    if (!createResponse.ok || !createResult?.ok) {
+      setTimerSaving(false);
+      setTimerError("Failed to save timer task.");
+      return;
+    }
+
+    const createdTaskId = createResult?.data?.id as string | undefined;
+    if (createdTaskId) {
+      const scheduleStart = timerStartAt.toISOString();
+      const scheduleMinutes = Math.min(12 * 60, Math.max(30, durationMinutes));
+      await fetch(`/api/tasks/${createdTaskId}/schedule`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plannedStartAt: scheduleStart,
+          plannedDurationMinutes: scheduleMinutes,
+        }),
+      });
+    }
+
+    setTimerSaving(false);
+    setTimerRunning(false);
+    setTimerStartAt(null);
+    setTimerElapsedMs(0);
+    setTimerTitle("");
+    setTimerPriority("MEDIUM");
+    if (focusBoardId) {
+      setTimerBoardId(focusBoardId);
+    } else {
+      setTimerBoardId("");
+    }
+    await fetchTasks();
+  };
+
   const showCurrentTimeLine = isSameDay(selectedDate, now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const plannerStartMinutes = START_HOUR * 60;
@@ -711,6 +858,43 @@ function PlannerPageContent() {
                   ) : null}
                 </div>
                 <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={timerModeEnabled}
+                      onClick={() => {
+                        const next = !timerModeEnabled;
+                        setTimerModeEnabled(next);
+                        if (next) {
+                          setTimerError(null);
+                          setTimerPriority("MEDIUM");
+                          if (focusBoardId) {
+                            setTimerBoardId(focusBoardId);
+                          } else {
+                            setTimerBoardId("");
+                          }
+                        } else {
+                          setTimerRunning(false);
+                          setTimerStartAt(null);
+                          setTimerElapsedMs(0);
+                          setTimerError(null);
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full border transition ${
+                        timerModeEnabled
+                          ? "border-zinc-900 bg-zinc-900"
+                          : "border-zinc-300 bg-zinc-200"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block size-4 rounded-full bg-white transition ${
+                          timerModeEnabled ? "translate-x-5" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                    Timer mode
+                  </label>
                   <Button
                     variant="outline"
                     size="sm"
@@ -809,6 +993,10 @@ function PlannerPageContent() {
                     const timeRange = `${hourLabel(task.startHour)} - ${hourLabel(endHour)}`;
                     const isDone = task.status === "DONE";
                     const isOutOfFocusBoard = Boolean(focusBoardId && task.board?.id !== focusBoardId);
+                    const sameHourTaskIds = scheduledBlocksByHour.get(task.startHour) ?? [];
+                    const laneIndexRaw = sameHourTaskIds.findIndex((id) => id === task.id);
+                    const laneIndex = laneIndexRaw < 0 ? 0 : Math.min(laneIndexRaw, 1);
+                    const shouldSplitWidth = sameHourTaskIds.length > 1;
                     return (
                       <div
                         key={task.id}
@@ -819,7 +1007,7 @@ function PlannerPageContent() {
                           event.dataTransfer.setData("text/task-id", task.id);
                           event.dataTransfer.setData("text/plain", task.id);
                         }}
-                        className={`absolute left-2 right-2 cursor-grab rounded-md border px-2 py-1.5 pb-5 shadow-sm active:cursor-grabbing ${
+                        className={`absolute cursor-grab rounded-md border px-2 py-1.5 pb-5 shadow-sm active:cursor-grabbing ${
                           isDone
                             ? "border-emerald-300 bg-emerald-50"
                             : "border-violet-300 bg-violet-50"
@@ -829,6 +1017,11 @@ function PlannerPageContent() {
                         style={{
                           top: `${topIndex * ROW_HEIGHT + 4}px`,
                           height: `${durationHours * ROW_HEIGHT - 8}px`,
+                          ...(shouldSplitWidth
+                            ? laneIndex === 0
+                              ? { left: "8px", width: "calc(50% - 10px)" }
+                              : { right: "8px", width: "calc(50% - 10px)" }
+                            : { left: "8px", right: "8px" }),
                         }}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -878,69 +1071,151 @@ function PlannerPageContent() {
             </CardContent>
           </Card>
 
-          <Card
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              const taskId =
-                event.dataTransfer.getData("text/task-id") || event.dataTransfer.getData("text/plain");
-              if (!taskId) return;
-              void unscheduleTask(taskId);
-            }}
-          >
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <CardTitle>Tasks ({format(selectedDate, "MMM d")})</CardTitle>
-                  <CardDescription>Due date sesuai hari yang dipilih.</CardDescription>
-                </div>
-                <Button size="sm" onClick={openAddTaskModal}>
-                  <Plus data-icon="inline-start" />
-                  Add Task
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {loading ? <p className="text-sm text-muted-foreground">Loading tasks...</p> : null}
-              {!loading && unscheduledTasks.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Semua task hari ini sudah terjadwal.</p>
-              ) : null}
-
-              {unscheduledTasks.map((task) => (
-                <button
-                  key={task.id}
-                  type="button"
-                  draggable
-                  onClick={() => openEditTaskModal(task)}
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/task-id", task.id);
-                    event.dataTransfer.setData("text/plain", task.id);
-                  }}
-                  className="w-full rounded-lg border bg-card px-3 py-2 text-left hover:bg-muted/50"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{task.title}</span>
-                    <Badge
-                      variant={
-                        task.priority === "HIGH"
-                          ? "destructive"
-                          : task.priority === "MEDIUM"
-                            ? "secondary"
-                            : "outline"
-                      }
+          {timerModeEnabled ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Timer</CardTitle>
+                <CardDescription>
+                  Toggl-style live tracking. Press play to start and stop to save task.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-xl border bg-zinc-50 p-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={timerTitle}
+                      onChange={(event) => setTimerTitle(event.target.value)}
+                      placeholder="What are you working on?"
+                      className="h-10 flex-1 rounded-md border bg-white px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                      disabled={timerRunning || timerSaving}
+                    />
+                    <div className="min-w-28 text-right font-mono text-lg font-semibold tabular-nums text-zinc-900">
+                      {formatElapsed(timerElapsedMs)}
+                    </div>
+                    <Button
+                      type="button"
+                      size="icon"
+                      className={timerRunning ? "bg-rose-600 hover:bg-rose-700" : ""}
+                      onClick={() => {
+                        if (timerRunning) {
+                          void stopTimerSession();
+                        } else {
+                          startTimerSession();
+                        }
+                      }}
+                      disabled={timerSaving}
+                      aria-label={timerRunning ? "Stop timer" : "Start timer"}
                     >
-                      {task.priority}
-                    </Badge>
+                      {timerRunning ? <Square className="size-4" /> : <Play className="size-4" />}
+                    </Button>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {task.board?.title ?? "Personal Task"}
-                    {savingTaskId === task.id ? " • Saving..." : ""}
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <select
+                      value={timerPriority}
+                      onChange={(event) =>
+                        setTimerPriority(event.target.value as "LOW" | "MEDIUM" | "HIGH")
+                      }
+                      disabled={timerRunning || timerSaving}
+                      className="h-9 rounded-md border bg-white px-3 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="LOW">Priority: LOW</option>
+                      <option value="MEDIUM">Priority: MEDIUM</option>
+                      <option value="HIGH">Priority: HIGH</option>
+                    </select>
+                    <select
+                      value={timerBoardId}
+                      onChange={(event) => {
+                        setTimerBoardId(event.target.value);
+                      }}
+                      disabled={timerRunning || timerSaving}
+                      className="h-9 rounded-md border bg-white px-3 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="">Personal Task (No Board)</option>
+                      {plannerBoards.map((board) => (
+                        <option key={board.id} value={board.id}>
+                          {board.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {timerRunning
+                      ? `Running since ${format(timerStartAt ?? new Date(), "PPP p")}`
+                      : timerBoardId
+                        ? `When stopped, task will be created in selected board default column.`
+                        : "When stopped, task will be created as Personal Task."}
                   </p>
-                </button>
-              ))}
-            </CardContent>
-          </Card>
+                </div>
+
+                {timerError ? <p className="text-sm text-destructive">{timerError}</p> : null}
+                {timerSaving ? <p className="text-sm text-muted-foreground">Saving timer task...</p> : null}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const taskId =
+                  event.dataTransfer.getData("text/task-id") || event.dataTransfer.getData("text/plain");
+                if (!taskId) return;
+                void unscheduleTask(taskId);
+              }}
+            >
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <CardTitle>Tasks ({format(selectedDate, "MMM d")})</CardTitle>
+                    <CardDescription>Due date sesuai hari yang dipilih.</CardDescription>
+                  </div>
+                  <Button size="sm" onClick={openAddTaskModal}>
+                    <Plus data-icon="inline-start" />
+                    Add Task
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {loading ? <p className="text-sm text-muted-foreground">Loading tasks...</p> : null}
+                {!loading && unscheduledTasks.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Semua task hari ini sudah terjadwal.</p>
+                ) : null}
+
+                {unscheduledTasks.map((task) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    draggable
+                    onClick={() => openEditTaskModal(task)}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/task-id", task.id);
+                      event.dataTransfer.setData("text/plain", task.id);
+                    }}
+                    className="w-full rounded-lg border bg-card px-3 py-2 text-left hover:bg-muted/50"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{task.title}</span>
+                      <Badge
+                        variant={
+                          task.priority === "HIGH"
+                            ? "destructive"
+                            : task.priority === "MEDIUM"
+                              ? "secondary"
+                              : "outline"
+                        }
+                      >
+                        {task.priority}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {task.board?.title ?? "Personal Task"}
+                      {savingTaskId === task.id ? " • Saving..." : ""}
+                    </p>
+                  </button>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </section>
       </main>
 
