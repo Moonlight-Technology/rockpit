@@ -50,6 +50,12 @@ type PlannerBoardOption = {
   title: string;
 };
 
+type PlannerQuery = {
+  date: string;
+  boardId: string;
+  boardTitle: string;
+};
+
 type EditTaskForm = {
   taskId: string;
   title: string;
@@ -128,21 +134,19 @@ function readPlannerQuery() {
 
 export default function PlannerPage() {
   const router = useRouter();
-  const query = useMemo(() => readPlannerQuery(), []);
+  const [plannerQuery, setPlannerQuery] = useState<PlannerQuery>({
+    date: "",
+    boardId: "",
+    boardTitle: "",
+  });
   const plannerGridRef = useRef<HTMLDivElement | null>(null);
-  const initialSelectedDate = useMemo(() => {
-    const dateParam = query.date;
-    if (!dateParam) return startOfDay(new Date());
-    const parsed = new Date(`${dateParam}T00:00:00`);
-    return Number.isNaN(parsed.getTime()) ? startOfDay(new Date()) : startOfDay(parsed);
-  }, [query.date]);
-  const focusBoardId = query.boardId || null;
-  const focusBoardTitle = query.boardTitle || null;
+  const focusBoardId = plannerQuery.boardId || null;
+  const focusBoardTitle = plannerQuery.boardTitle || null;
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date>(initialSelectedDate);
+  const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [showMainDatePicker, setShowMainDatePicker] = useState(false);
   const [now, setNow] = useState<Date>(new Date());
   const [resizing, setResizing] = useState<ResizeState | null>(null);
@@ -190,6 +194,17 @@ export default function PlannerPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    setPlannerQuery(readPlannerQuery());
+  }, []);
+
+  useEffect(() => {
+    if (!plannerQuery.date) return;
+    const parsed = new Date(`${plannerQuery.date}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return;
+    setSelectedDate(startOfDay(parsed));
+  }, [plannerQuery.date]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
