@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { addDays, format, isSameDay, setHours, setMinutes, startOfDay } from "date-fns";
 import {
   ArrowLeft,
@@ -48,12 +48,6 @@ type AddTaskForm = {
 type PlannerBoardOption = {
   id: string;
   title: string;
-};
-
-type PlannerQuery = {
-  date: string;
-  boardId: string;
-  boardTitle: string;
 };
 
 type EditTaskForm = {
@@ -120,25 +114,23 @@ function combineDateAndTime(dateString: string, timeString: string) {
   return date;
 }
 
-function readPlannerQuery() {
-  if (typeof window === "undefined") {
-    return { date: "", boardId: "", boardTitle: "" };
-  }
-  const params = new URLSearchParams(window.location.search);
-  return {
-    date: params.get("date") ?? "",
-    boardId: params.get("boardId") ?? "",
-    boardTitle: params.get("boardTitle") ?? "",
-  };
+function parseQueryDate(value: string) {
+  if (!value) return startOfDay(new Date());
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? startOfDay(new Date()) : startOfDay(parsed);
 }
 
-export default function PlannerPage() {
+function PlannerPageContent() {
   const router = useRouter();
-  const [plannerQuery, setPlannerQuery] = useState<PlannerQuery>({
-    date: "",
-    boardId: "",
-    boardTitle: "",
-  });
+  const searchParams = useSearchParams();
+  const plannerQuery = useMemo(
+    () => ({
+      date: searchParams.get("date") ?? "",
+      boardId: searchParams.get("boardId") ?? "",
+      boardTitle: searchParams.get("boardTitle") ?? "",
+    }),
+    [searchParams]
+  );
   const plannerGridRef = useRef<HTMLDivElement | null>(null);
   const focusBoardId = plannerQuery.boardId || null;
   const focusBoardTitle = plannerQuery.boardTitle || null;
@@ -146,7 +138,7 @@ export default function PlannerPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
+  const [selectedDate, setSelectedDate] = useState<Date>(() => parseQueryDate(plannerQuery.date));
   const [showMainDatePicker, setShowMainDatePicker] = useState(false);
   const [now, setNow] = useState<Date>(new Date());
   const [resizing, setResizing] = useState<ResizeState | null>(null);
@@ -194,17 +186,6 @@ export default function PlannerPage() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    setPlannerQuery(readPlannerQuery());
-  }, []);
-
-  useEffect(() => {
-    if (!plannerQuery.date) return;
-    const parsed = new Date(`${plannerQuery.date}T00:00:00`);
-    if (Number.isNaN(parsed.getTime())) return;
-    setSelectedDate(startOfDay(parsed));
-  }, [plannerQuery.date]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -1267,5 +1248,13 @@ export default function PlannerPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function PlannerPage() {
+  return (
+    <Suspense fallback={null}>
+      <PlannerPageContent />
+    </Suspense>
   );
 }
