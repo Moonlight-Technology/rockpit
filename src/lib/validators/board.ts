@@ -66,6 +66,7 @@ export const updateTaskScheduleSchema = z.object({
 export const createStandaloneTaskSchema = z.object({
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(1000).optional().nullable(),
+  startDate: z.string().datetime().optional().nullable(),
   dueDate: z.string().datetime().optional().nullable(),
   priority: priorityEnum.optional(),
 });

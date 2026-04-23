@@ -413,6 +413,7 @@ export async function createStandaloneTaskForUser(input: {
   userId: string;
   title: string;
   description?: string | null;
+  startDate?: string | null;
   dueDate?: string | null;
   priority?: TaskPriority;
 }) {
@@ -429,6 +430,7 @@ export async function createStandaloneTaskForUser(input: {
       },
       title: input.title,
       description: input.description ?? null,
+      startDate: input.startDate ? new Date(input.startDate) : null,
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
       priority: input.priority ?? TaskPriority.MEDIUM,
       status: "TODO",
