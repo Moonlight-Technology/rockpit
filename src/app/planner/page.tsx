@@ -73,8 +73,8 @@ type ResizeState = {
   startHour: number;
 };
 
-const START_HOUR = 8;
-const END_HOUR_EXCLUSIVE = 20;
+const START_HOUR = 6;
+const END_HOUR_EXCLUSIVE = 24;
 const ROW_HEIGHT = 56;
 
 const initialTaskForm: AddTaskForm = {
