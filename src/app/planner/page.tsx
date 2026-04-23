@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDays, format, isSameDay, setHours, setMinutes, startOfDay } from "date-fns";
-import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
@@ -115,18 +114,30 @@ function combineDateAndTime(dateString: string, timeString: string) {
   return date;
 }
 
+function readPlannerQuery() {
+  if (typeof window === "undefined") {
+    return { date: "", boardId: "", boardTitle: "" };
+  }
+  const params = new URLSearchParams(window.location.search);
+  return {
+    date: params.get("date") ?? "",
+    boardId: params.get("boardId") ?? "",
+    boardTitle: params.get("boardTitle") ?? "",
+  };
+}
+
 export default function PlannerPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const query = useMemo(() => readPlannerQuery(), []);
   const plannerGridRef = useRef<HTMLDivElement | null>(null);
   const initialSelectedDate = useMemo(() => {
-    const dateParam = searchParams.get("date");
+    const dateParam = query.date;
     if (!dateParam) return startOfDay(new Date());
     const parsed = new Date(`${dateParam}T00:00:00`);
     return Number.isNaN(parsed.getTime()) ? startOfDay(new Date()) : startOfDay(parsed);
-  }, [searchParams]);
-  const focusBoardId = searchParams.get("boardId");
-  const focusBoardTitle = searchParams.get("boardTitle");
+  }, [query.date]);
+  const focusBoardId = query.boardId || null;
+  const focusBoardTitle = query.boardTitle || null;
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
