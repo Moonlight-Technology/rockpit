@@ -1,19 +1,32 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   differenceInCalendarDays,
   eachDayOfInterval,
+  endOfMonth,
   endOfWeek,
   format,
   isSameDay,
+  isSameMonth,
   max as maxDate,
   min as minDate,
+  startOfMonth,
   startOfWeek,
 } from "date-fns";
-import { ArrowLeft, ArrowUpDown, CalendarDays, Pencil, Plus, Settings, UserPlus, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUpDown,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Settings,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -182,6 +195,7 @@ function moveColumnLocally(columns: BoardColumn[], movingColumnId: string, toInd
 }
 
 export default function BoardDetailPage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const boardId = params.id;
   const [board, setBoard] = useState<BoardDetail | null>(null);
@@ -241,7 +255,7 @@ export default function BoardDetailPage() {
     tags: [],
     dueDate: "",
   });
-  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  const [calendarMonth, setCalendarMonth] = useState<Date>(startOfMonth(new Date()));
 
   const takeCardPickerSnapshot = (form: CardEditForm): CardPickerSnapshot => ({
     startDate: form.startDate,
@@ -311,12 +325,35 @@ export default function BoardDetailPage() {
 
     return filtered;
   }, [allTasks, listAssigneeFilter, listSort.direction, listSort.key, listStatusFilter]);
-  const taskDueDates = allTasks
-    .filter((task) => task.dueDate)
-    .map((task) => new Date(task.dueDate as string));
-  const tasksForSelectedDate = allTasks.filter((task) =>
-    task.dueDate ? isSameDay(new Date(task.dueDate), calendarDate) : false
-  );
+  const calendarTasksByDate = useMemo(() => {
+    const map = new Map<string, (typeof allTasks)[number][]>();
+    for (const task of allTasks) {
+      if (!task.dueDate) continue;
+      const key = format(new Date(task.dueDate), "yyyy-MM-dd");
+      const list = map.get(key) ?? [];
+      list.push(task);
+      map.set(key, list);
+    }
+    for (const [key, list] of map.entries()) {
+      map.set(
+        key,
+        [...list].sort((a, b) => {
+          if (a.priority !== b.priority) {
+            const rank: Record<BoardTask["priority"], number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+            return rank[b.priority] - rank[a.priority];
+          }
+          return a.title.localeCompare(b.title);
+        })
+      );
+    }
+    return map;
+  }, [allTasks]);
+
+  const calendarGridDays = useMemo(() => {
+    const start = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 0 });
+    const end = endOfWeek(endOfMonth(calendarMonth), { weekStartsOn: 0 });
+    return eachDayOfInterval({ start, end });
+  }, [calendarMonth]);
   const scheduledTimelineTasks = allTasks
     .map((task) => {
       const plannedStart = task.plannedStartAt ? new Date(task.plannedStartAt) : null;
@@ -468,10 +505,20 @@ export default function BoardDetailPage() {
   if (!board) {
     return (
       <main className="mx-auto flex min-h-full w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
-        <Link href="/" className={buttonVariants({ variant: "outline", className: "w-fit" })}>
+        <button
+          type="button"
+          onClick={() => {
+            if (window.history.length > 1) {
+              router.back();
+            } else {
+              router.push("/boards");
+            }
+          }}
+          className={buttonVariants({ variant: "outline", className: "w-fit" })}
+        >
           <ArrowLeft data-icon="inline-start" />
-          Back to Home
-        </Link>
+          Back
+        </button>
         <p className="text-sm text-destructive">{error ?? "Board not found."}</p>
       </main>
     );
@@ -875,18 +922,46 @@ export default function BoardDetailPage() {
     await fetchBoard();
   };
 
+  const closeBoard = async () => {
+    const confirmed = window.confirm("Close this board? It will be hidden from active boards.");
+    if (!confirmed) return;
+
+    setSettingsError(null);
+    setSaving(true);
+    const response = await fetch(`/api/boards/${board.id}`, {
+      method: "DELETE",
+    });
+    setSaving(false);
+
+    if (!response.ok) {
+      setSettingsError("Failed to close board. Only owner can close this board.");
+      return;
+    }
+
+    setShowSettingsModal(false);
+    setShowSettingsDueDatePicker(false);
+    router.push("/boards");
+  };
+
   return (
     <div className={`min-h-screen ${themeClassMap[board.theme] ?? themeClassMap.Slate}`}>
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <Link
-              href="/"
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) {
+                  router.back();
+                } else {
+                  router.push("/boards");
+                }
+              }}
               className={buttonVariants({ variant: "outline", size: "sm", className: "w-fit" })}
             >
               <ArrowLeft data-icon="inline-start" />
-              Back to Home
-            </Link>
+              Back
+            </button>
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{board.title}</h1>
             <p className="text-sm text-muted-foreground">{board.description}</p>
           </div>
@@ -1531,44 +1606,106 @@ export default function BoardDetailPage() {
           <TabsContent value="calendar" className="pt-2">
             <Card>
               <CardHeader>
-                <CardTitle>Calendar</CardTitle>
-                <CardDescription>Task due dates in this board.</CardDescription>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <CardTitle>Calendar</CardTitle>
+                    <CardDescription>Monthly calendar view with task items.</CardDescription>
+                  </div>
+                  <Button size="sm" onClick={openAddTaskFromList} disabled={!defaultTaskColumnIdForList}>
+                    <Plus data-icon="inline-start" />
+                    Add Task
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Calendar
-                  mode="single"
-                  selected={calendarDate}
-                  onSelect={(date) => setCalendarDate(date ?? new Date())}
-                  className="w-full rounded-lg border p-4 [&_.rdp-months]:w-full [&_.rdp-month]:w-full [&_.rdp-month_caption]:text-base [&_.rdp-nav]:px-1 [&_.rdp-table]:w-full [&_.rdp-weekday]:py-1 [&_.rdp-week]:py-1"
-                  modifiers={{ hasTask: taskDueDates }}
-                  modifiersClassNames={{
-                    hasTask:
-                      "relative after:absolute after:bottom-1 after:left-1/2 after:size-1 after:-translate-x-1/2 after:rounded-full after:bg-primary",
-                  }}
-                />
-                <div className="rounded-lg border bg-background p-4">
-                  <p className="text-sm font-medium">{format(calendarDate, "PPP")}</p>
-                  <p className="mb-3 text-xs text-muted-foreground">Tasks due on selected date.</p>
-                {tasksForSelectedDate.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No tasks due on this day.</p>
-                ) : null}
-                {tasksForSelectedDate.map((task) => (
-                    <button
-                      key={task.id}
-                      type="button"
-                      onClick={() => openCardModal(task)}
-                      className="mb-2 w-full rounded-md border bg-card px-3 py-2 text-left last:mb-0"
-                    >
-                    <p className="text-sm font-medium">{task.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {task.columnTitle}
-                      {(() => {
-                        const assignees = getTaskAssignees(task);
-                        return assignees.length > 0 ? ` • ${assignees.map((member) => member.name).join(", ")}` : "";
-                      })()}
-                    </p>
-                    </button>
-                ))}
+                <div className="flex items-center justify-between">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCalendarMonth((prev) => startOfMonth(new Date(prev.getFullYear(), prev.getMonth() - 1, 1)))}
+                  >
+                    <ChevronLeft data-icon="inline-start" />
+                    Prev
+                  </Button>
+                  <p className="text-sm font-semibold md:text-base">{format(calendarMonth, "MMMM yyyy")}</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCalendarMonth((prev) => startOfMonth(new Date(prev.getFullYear(), prev.getMonth() + 1, 1)))}
+                  >
+                    Next
+                    <ChevronRight data-icon="inline-end" />
+                  </Button>
+                </div>
+
+                <div className="overflow-x-auto rounded-lg border bg-background">
+                  <div className="min-w-[760px]">
+                    <div className="grid grid-cols-7 border-b bg-muted/30 text-xs font-medium text-muted-foreground">
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                        <div key={day} className="px-3 py-2">
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-7">
+                      {calendarGridDays.map((day) => {
+                        const key = format(day, "yyyy-MM-dd");
+                        const items = calendarTasksByDate.get(key) ?? [];
+                        const visible = items.slice(0, 2);
+                        const overflow = Math.max(0, items.length - visible.length);
+                        const isToday = isSameDay(day, new Date());
+                        return (
+                          <div
+                            key={key}
+                            className={`min-h-28 border-b border-r p-2 align-top ${
+                              isSameMonth(day, calendarMonth) ? "bg-background" : "bg-muted/20"
+                            }`}
+                          >
+                            <div className="mb-1 flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  router.push(
+                                    `/planner?date=${format(day, "yyyy-MM-dd")}&boardId=${board.id}&boardTitle=${encodeURIComponent(board.title)}`
+                                  )
+                                }
+                                className="rounded-full p-0.5 hover:bg-muted"
+                                title="Open day in planner"
+                              >
+                                <span
+                                className={`grid size-6 place-items-center rounded-full text-xs ${
+                                  isToday ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                                }`}
+                                >
+                                  {format(day, "d")}
+                                </span>
+                              </button>
+                            </div>
+                            <div className="space-y-1">
+                              {visible.map((task) => (
+                                <button
+                                  key={task.id}
+                                  type="button"
+                                  onClick={() => openCardModal(task)}
+                                  className="w-full truncate rounded-sm border bg-card px-1.5 py-1 text-left text-[11px] hover:bg-muted"
+                                  title={task.title}
+                                >
+                                  {task.title}
+                                </button>
+                              ))}
+                              {overflow > 0 ? (
+                                <span className="block px-1.5 text-[11px] text-muted-foreground">
+                                  +{overflow} more
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1958,19 +2095,24 @@ export default function BoardDetailPage() {
               </div>
 
               {settingsError ? <p className="text-sm text-destructive">{settingsError}</p> : null}
-              <div className="mt-1 flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowSettingsModal(false);
-                    setShowSettingsDueDatePicker(false);
-                  }}
-                >
-                  Cancel
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <Button variant="destructive" onClick={closeBoard} disabled={saving}>
+                  {saving ? "Closing..." : "Close Board"}
                 </Button>
-                <Button onClick={saveBoardSettings} disabled={saving}>
-                  {saving ? "Saving..." : "Save Changes"}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowSettingsModal(false);
+                      setShowSettingsDueDatePicker(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={saveBoardSettings} disabled={saving}>
+                    {saving ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { addDays, format, isSameDay, setHours, setMinutes, startOfDay } from "date-fns";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
@@ -115,12 +116,22 @@ function combineDateAndTime(dateString: string, timeString: string) {
 }
 
 export default function PlannerPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const plannerGridRef = useRef<HTMLDivElement | null>(null);
+  const initialSelectedDate = useMemo(() => {
+    const dateParam = searchParams.get("date");
+    if (!dateParam) return startOfDay(new Date());
+    const parsed = new Date(`${dateParam}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? startOfDay(new Date()) : startOfDay(parsed);
+  }, [searchParams]);
+  const focusBoardId = searchParams.get("boardId");
+  const focusBoardTitle = searchParams.get("boardTitle");
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
+  const [selectedDate, setSelectedDate] = useState<Date>(initialSelectedDate);
   const [showMainDatePicker, setShowMainDatePicker] = useState(false);
   const [now, setNow] = useState<Date>(new Date());
   const [resizing, setResizing] = useState<ResizeState | null>(null);
@@ -145,6 +156,7 @@ export default function PlannerPage() {
   const [deletingTask, setDeletingTask] = useState(false);
   const [plannerBoards, setPlannerBoards] = useState<PlannerBoardOption[]>([]);
   const [editColumnOptions, setEditColumnOptions] = useState<{ id: string; title: string }[]>([]);
+  const [focusBoardDefaultColumnId, setFocusBoardDefaultColumnId] = useState<string | null>(null);
 
   const takeEditDateSnapshot = (form: EditTaskForm): TaskDatePickerValue => ({
     startDate: form.startDate,
@@ -172,6 +184,25 @@ export default function PlannerPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchTasks();
   }, []);
+
+  useEffect(() => {
+    if (!focusBoardId) return;
+
+    const fetchFocusBoardDefaultColumn = async () => {
+      const response = await fetch(`/api/boards/${focusBoardId}`, { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        setFocusBoardDefaultColumnId(null);
+        return;
+      }
+      const columns: { id: string; title: string }[] = result.data.columns ?? [];
+      const fallback =
+        columns.find((column) => column.title.trim().toLowerCase() !== "done") ?? columns[0];
+      setFocusBoardDefaultColumnId(fallback?.id ?? null);
+    };
+
+    void fetchFocusBoardDefaultColumn();
+  }, [focusBoardId]);
 
   useEffect(() => {
     const fetchBoards = async () => {
@@ -398,20 +429,37 @@ export default function PlannerPage() {
 
     setAddingTask(true);
     const due = new Date(`${addTaskForm.dueDate}T12:00:00`);
-    const response = await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: addTaskForm.title.trim(),
-        description: addTaskForm.description.trim() || null,
-        priority: addTaskForm.priority,
-        dueDate: due.toISOString(),
-      }),
-    });
+    const response =
+      focusBoardId && focusBoardDefaultColumnId
+        ? await fetch(`/api/boards/${focusBoardId}/tasks`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              columnId: focusBoardDefaultColumnId,
+              title: addTaskForm.title.trim(),
+              description: addTaskForm.description.trim() || null,
+              priority: addTaskForm.priority,
+              dueDate: due.toISOString(),
+            }),
+          })
+        : await fetch("/api/tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: addTaskForm.title.trim(),
+              description: addTaskForm.description.trim() || null,
+              priority: addTaskForm.priority,
+              dueDate: due.toISOString(),
+            }),
+          });
     setAddingTask(false);
 
     if (!response.ok) {
-      setAddTaskError("Failed to add task.");
+      setAddTaskError(
+        focusBoardId
+          ? "Failed to add task to this board."
+          : "Failed to add task."
+      );
       return;
     }
 
@@ -617,13 +665,20 @@ export default function PlannerPage() {
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Link
-              href="/"
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) {
+                  router.back();
+                } else {
+                  router.push("/");
+                }
+              }}
               className={buttonVariants({ variant: "outline", size: "sm", className: "w-fit" })}
             >
               <ArrowLeft data-icon="inline-start" />
-              Back to Home
-            </Link>
+              Back
+            </button>
             <Badge variant="secondary">
               <CalendarDays data-icon="inline-start" />
               Planner
@@ -642,6 +697,11 @@ export default function PlannerPage() {
                     Day Planner
                   </CardTitle>
                   <CardDescription>{format(selectedDate, "EEEE, MMM d, yyyy")}</CardDescription>
+                  {focusBoardId ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Focus board: <span className="font-medium">{focusBoardTitle ?? focusBoardId}</span>
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -741,6 +801,7 @@ export default function PlannerPage() {
                     const endHour = Math.min(task.startHour + durationHours, END_HOUR_EXCLUSIVE);
                     const timeRange = `${hourLabel(task.startHour)} - ${hourLabel(endHour)}`;
                     const isDone = task.status === "DONE";
+                    const isOutOfFocusBoard = Boolean(focusBoardId && task.board?.id !== focusBoardId);
                     return (
                       <div
                         key={task.id}
@@ -755,7 +816,9 @@ export default function PlannerPage() {
                           isDone
                             ? "border-emerald-300 bg-emerald-50"
                             : "border-violet-300 bg-violet-50"
-                        } ${selectedScheduledTaskId === task.id ? "ring-2 ring-primary/30" : ""}`}
+                        } ${selectedScheduledTaskId === task.id ? "ring-2 ring-primary/30" : ""} ${
+                          isOutOfFocusBoard ? "opacity-50 saturate-0" : ""
+                        }`}
                         style={{
                           top: `${topIndex * ROW_HEIGHT + 4}px`,
                           height: `${durationHours * ROW_HEIGHT - 8}px`,
@@ -934,7 +997,11 @@ export default function PlannerPage() {
           <Card className="w-full max-w-lg overflow-visible">
             <CardHeader>
               <CardTitle>Add Task</CardTitle>
-              <CardDescription>Create personal task for selected date.</CardDescription>
+              <CardDescription>
+                {focusBoardId
+                  ? `Create task in focused board: ${focusBoardTitle ?? "Selected Board"}.`
+                  : "Create personal task for selected date."}
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <input
