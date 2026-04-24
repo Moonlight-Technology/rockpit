@@ -12,20 +12,6 @@ function normalizeAssigneeIds(assigneeIds?: (string | null | undefined)[]) {
   return Array.from(new Set((assigneeIds ?? []).filter(Boolean) as string[])).slice(0, 20);
 }
 
-const boardSummaryInclude = {
-  _count: { select: { columns: true } },
-  columns: {
-    select: {
-      title: true,
-      tasks: {
-        select: {
-          status: true,
-        },
-      },
-    },
-  },
-} satisfies Prisma.BoardInclude;
-
 const boardDetailInclude = {
   members: {
     include: {
@@ -61,14 +47,35 @@ export async function listBoardsForUser(
   options?: { includeClosed?: boolean }
 ) {
   const includeClosed = options?.includeClosed === true;
-  return prisma.board.findMany({
+  const boards = await prisma.board.findMany({
     where: {
       ...(includeClosed ? {} : { closedAt: null }),
       OR: [{ ownerId: userId }, { members: { some: { userId } } }],
     },
-    include: boardSummaryInclude,
+    include: {
+      _count: { select: { columns: true } },
+      columns: {
+        select: {
+          title: true,
+          tasks: {
+            select: {
+              status: true,
+            },
+          },
+        },
+      },
+      members: {
+        where: { userId },
+        select: { isPinned: true, pinnedAt: true },
+      },
+    },
     orderBy: { updatedAt: "desc" },
   });
+  return boards.map((board) => ({
+    ...board,
+    isPinnedForUser: board.members[0]?.isPinned ?? false,
+    pinnedAtForUser: board.members[0]?.pinnedAt ?? null,
+  }));
 }
 
 export async function createBoardForUser(input: {
@@ -217,6 +224,87 @@ export async function closeBoardForUser(input: { userId: string; boardId: string
     where: { id: input.boardId },
     data: { closedAt: new Date() },
   });
+}
+
+export async function setBoardPinForUser(input: {
+  userId: string;
+  boardId: string;
+  pin: boolean;
+  replaceBoardId?: string | null;
+}) {
+  const targetMembership = await prisma.boardMember.findFirst({
+    where: {
+      boardId: input.boardId,
+      userId: input.userId,
+      board: { closedAt: null },
+    },
+    select: { id: true, isPinned: true, boardId: true },
+  });
+  if (!targetMembership) return { error: "NOT_FOUND" as const };
+
+  if (!input.pin) {
+    if (!targetMembership.isPinned) return { ok: true as const };
+    await prisma.boardMember.update({
+      where: { id: targetMembership.id },
+      data: { isPinned: false, pinnedAt: null },
+    });
+    return { ok: true as const };
+  }
+
+  if (targetMembership.isPinned) return { ok: true as const };
+
+  const pinnedMemberships = await prisma.boardMember.findMany({
+    where: {
+      userId: input.userId,
+      isPinned: true,
+      board: { closedAt: null },
+    },
+    select: { id: true, boardId: true, pinnedAt: true, board: { select: { id: true, title: true } } },
+    orderBy: [{ pinnedAt: "asc" }, { updatedAt: "asc" }],
+  });
+
+  const maxPinnedBoards = 2;
+  if (pinnedMemberships.length >= maxPinnedBoards) {
+    const replaceBoardId = input.replaceBoardId ?? null;
+    if (!replaceBoardId) {
+      return {
+        error: "PIN_LIMIT" as const,
+        pinnedBoards: pinnedMemberships.map((item) => ({
+          id: item.board.id,
+          title: item.board.title,
+        })),
+      };
+    }
+
+    const replaceMembership = pinnedMemberships.find((item) => item.boardId === replaceBoardId);
+    if (!replaceMembership) {
+      return {
+        error: "REPLACE_NOT_PINNED" as const,
+        pinnedBoards: pinnedMemberships.map((item) => ({
+          id: item.board.id,
+          title: item.board.title,
+        })),
+      };
+    }
+
+    await prisma.$transaction([
+      prisma.boardMember.update({
+        where: { id: replaceMembership.id },
+        data: { isPinned: false, pinnedAt: null },
+      }),
+      prisma.boardMember.update({
+        where: { id: targetMembership.id },
+        data: { isPinned: true, pinnedAt: new Date() },
+      }),
+    ]);
+    return { ok: true as const };
+  }
+
+  await prisma.boardMember.update({
+    where: { id: targetMembership.id },
+    data: { isPinned: true, pinnedAt: new Date() },
+  });
+  return { ok: true as const };
 }
 
 export async function addColumnToBoard(input: {
