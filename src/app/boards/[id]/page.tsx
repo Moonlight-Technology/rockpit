@@ -21,6 +21,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Download,
   Pencil,
   Plus,
   Settings,
@@ -248,6 +249,7 @@ export default function BoardDetailPage() {
   const [listAssigneeFilter, setListAssigneeFilter] = useState<ListAssigneeFilter>("all");
   const [timelineStatusFilter, setTimelineStatusFilter] = useState<TimelineStatusFilter>("all");
   const [timelineAssigneeFilter, setTimelineAssigneeFilter] = useState<TimelineAssigneeFilter>("all");
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const [settingsForm, setSettingsForm] = useState<BoardSettingsForm>({
     title: "",
     description: "",
@@ -488,6 +490,31 @@ export default function BoardDetailPage() {
     },
     [boardId]
   );
+
+  const downloadBoardReport = async () => {
+    setDownloadingReport(true);
+    try {
+      const response = await fetch(`/api/boards/${boardId}/report`);
+      if (!response.ok) {
+        window.alert("Failed to generate board report.");
+        return;
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const disposition = response.headers.get("content-disposition");
+      const match = disposition?.match(/filename="([^"]+)"/i);
+      anchor.href = objectUrl;
+      anchor.download = match?.[1] ?? `rockpit-board-report-${boardId}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -998,6 +1025,15 @@ export default function BoardDetailPage() {
               >
                 <Settings data-icon="inline-start" />
                 Board Settings
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void downloadBoardReport()}
+                disabled={downloadingReport}
+              >
+                <Download data-icon="inline-start" />
+                {downloadingReport ? "Generating..." : "Download Report"}
               </Button>
               <Badge variant="secondary">Theme: {board.theme}</Badge>
               {board.dueDate ? (
