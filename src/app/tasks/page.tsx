@@ -35,6 +35,9 @@ export default function AllTasksPage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "done">("all");
+  const [dueSort, setDueSort] = useState<"asc" | "desc">("asc");
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -57,23 +60,47 @@ export default function AllTasksPage() {
     () => tasks.filter((task) => task.status === "DONE").length,
     [tasks]
   );
+  const filteredTasks = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase();
+    return tasks.filter((task) => {
+      const statusPass =
+        statusFilter === "all" ||
+        (statusFilter === "done" ? task.status === "DONE" : task.status !== "DONE");
+      if (!statusPass) return false;
+
+      if (!keyword) return true;
+
+      const text = [
+        task.title,
+        task.description ?? "",
+        task.board?.title ?? "",
+        task.column?.title ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(keyword);
+    });
+  }, [searchQuery, statusFilter, tasks]);
+
   const sortedTasks = useMemo(
     () =>
-      [...tasks].sort((a, b) => {
-        if (a.status !== b.status) return a.status === "DONE" ? 1 : -1;
+      [...filteredTasks].sort((a, b) => {
+        if (statusFilter === "all" && a.status !== b.status) return a.status === "DONE" ? 1 : -1;
 
         const aIsOverdue = a.status !== "DONE" && a.dueDate ? getOverdueDays(a.dueDate) > 0 : false;
         const bIsOverdue = b.status !== "DONE" && b.dueDate ? getOverdueDays(b.dueDate) > 0 : false;
         if (aIsOverdue !== bIsOverdue) return aIsOverdue ? -1 : 1;
 
         if (a.dueDate && b.dueDate) {
-          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+          const diff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+          return dueSort === "asc" ? diff : -diff;
         }
         if (a.dueDate) return -1;
         if (b.dueDate) return 1;
         return a.title.localeCompare(b.title);
       }),
-    [tasks]
+    [dueSort, filteredTasks, statusFilter]
   );
 
   const onToggleTaskStatus = async (taskId: string, checked: boolean | "indeterminate") => {
@@ -119,9 +146,39 @@ export default function AllTasksPage() {
             <CardDescription>Tasks assigned to your account.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
+            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_180px_180px]">
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search task title, board, or description..."
+                className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as "all" | "open" | "done")}
+                className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <option value="all">All Status</option>
+                <option value="open">Open Only</option>
+                <option value="done">Done Only</option>
+              </select>
+              <select
+                value={dueSort}
+                onChange={(event) => setDueSort(event.target.value as "asc" | "desc")}
+                className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <option value="asc">Due Date: Earliest</option>
+                <option value="desc">Due Date: Latest</option>
+              </select>
+            </div>
+
             {loading ? <p className="text-sm text-muted-foreground">Loading tasks...</p> : null}
-            {!loading && tasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No tasks assigned to your account yet.</p>
+            {!loading && sortedTasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {tasks.length === 0
+                  ? "No tasks assigned to your account yet."
+                  : "No tasks match your search/filter."}
+              </p>
             ) : null}
 
             {sortedTasks.map((task) => {
