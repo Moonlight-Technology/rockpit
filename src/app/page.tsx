@@ -698,9 +698,16 @@ export default function Home() {
                   {boardsLoading ? (
                     <p className="text-sm text-muted-foreground">Loading boards...</p>
                   ) : boards.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No board yet. Click Add Board to create your first one.
-                    </p>
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        No board yet. Click Add Board to create your first one.
+                      </p>
+                      <div className="flex justify-end">
+                        <Button variant="outline" size="sm" onClick={() => router.push("/boards")}>
+                          View all boards
+                        </Button>
+                      </div>
+                    </div>
                   ) : (
                     <div className="space-y-3">
                       <div className="grid gap-3 md:grid-cols-2">

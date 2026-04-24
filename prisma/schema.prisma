@@ -60,12 +60,15 @@ model BoardMember {
   boardId   String
   userId    String
   role      BoardRole @default(MEMBER)
+  isPinned  Boolean   @default(false)
+  pinnedAt  DateTime?
   board     Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
   @@unique([boardId, userId])
+  @@index([userId, isPinned])
 }
 
 model BoardColumn {

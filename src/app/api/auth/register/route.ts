@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     const payload = await req.json();
     const parsed = registerSchema.safeParse(payload);
     if (!parsed.success) {
-      return validationError("Name, email, and password are required.");
+      return validationError(parsed.error.issues[0]?.message ?? "Invalid registration payload.");
     }
 
     const email = parsed.data.email.toLowerCase();
