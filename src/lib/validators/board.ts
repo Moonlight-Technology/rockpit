@@ -82,3 +82,17 @@ export const updateBoardSchema = z.object({
 export const addMemberByEmailSchema = z.object({
   email: z.string().trim().email(),
 });
+
+export const updateBoardProjectInfoSchema = z.object({
+  notes: z.string().max(20000).default(""),
+  resources: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(120),
+        key: z.string().trim().min(1).max(120),
+        value: z.string().trim().min(1).max(5000),
+      })
+    )
+    .max(100)
+    .default([]),
+});

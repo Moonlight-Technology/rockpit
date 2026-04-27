@@ -22,9 +22,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Eye,
+  EyeOff,
+  FileText,
+  Link2,
   Pencil,
   Plus,
   Settings,
+  Trash2,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -80,6 +85,28 @@ type BoardDetail = {
   updatedAt: string;
   columns: BoardColumn[];
   members: { user: Member }[];
+};
+
+type ProjectResource = {
+  id: string;
+  title: string;
+  key: string;
+  value: string;
+  position: number;
+};
+
+type ProjectInfo = {
+  boardId: string;
+  notes: string;
+  resources: ProjectResource[];
+  canEdit: boolean;
+};
+
+type ResourceFormState = {
+  id: string | null;
+  title: string;
+  key: string;
+  value: string;
 };
 
 type RenameState = { columnId: string; value: string } | null;
@@ -250,6 +277,23 @@ export default function BoardDetailPage() {
   const [timelineStatusFilter, setTimelineStatusFilter] = useState<TimelineStatusFilter>("all");
   const [timelineAssigneeFilter, setTimelineAssigneeFilter] = useState<TimelineAssigneeFilter>("all");
   const [downloadingReport, setDownloadingReport] = useState(false);
+  const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null);
+  const [projectInfoDraftNotes, setProjectInfoDraftNotes] = useState("");
+  const [projectInfoDraftResources, setProjectInfoDraftResources] = useState<ProjectResource[]>([]);
+  const [projectInfoError, setProjectInfoError] = useState<string | null>(null);
+  const [projectInfoSaving, setProjectInfoSaving] = useState(false);
+  const [showProjectInfoPanel, setShowProjectInfoPanel] = useState(false);
+  const [projectInfoPanelFocus, setProjectInfoPanelFocus] = useState<"resources" | "notes">("resources");
+  const [revealedSecretIds, setRevealedSecretIds] = useState<string[]>([]);
+  const [resourceSearch, setResourceSearch] = useState("");
+  const [showResourceModal, setShowResourceModal] = useState(false);
+  const [resourceModalError, setResourceModalError] = useState<string | null>(null);
+  const [resourceForm, setResourceForm] = useState<ResourceFormState>({
+    id: null,
+    title: "",
+    key: "",
+    value: "",
+  });
   const [settingsForm, setSettingsForm] = useState<BoardSettingsForm>({
     title: "",
     description: "",
@@ -282,6 +326,16 @@ export default function BoardDetailPage() {
     board?.columns.find((column) => !isDoneColumnTitle(column.title))?.id ??
     board?.columns[0]?.id ??
     null;
+  const filteredProjectResources = useMemo(() => {
+    const keyword = resourceSearch.trim().toLowerCase();
+    if (!keyword) return projectInfoDraftResources;
+    return projectInfoDraftResources.filter(
+      (resource) =>
+        resource.title.toLowerCase().includes(keyword) ||
+        resource.key.toLowerCase().includes(keyword) ||
+        resource.value.toLowerCase().includes(keyword)
+    );
+  }, [projectInfoDraftResources, resourceSearch]);
 
   const listTasks = useMemo(() => {
     const filtered = allTasks.filter((task) => {
@@ -491,6 +545,26 @@ export default function BoardDetailPage() {
     [boardId]
   );
 
+  const fetchProjectInfo = useMemo(
+    () => async () => {
+      const response = await fetch(`/api/boards/${boardId}/project-info`, { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        setProjectInfo(null);
+        setProjectInfoError(result?.error?.message ?? "Failed to load project info.");
+        return;
+      }
+
+      const nextInfo = result.data as ProjectInfo;
+      setProjectInfo(nextInfo);
+      setProjectInfoDraftNotes(nextInfo.notes ?? "");
+      setProjectInfoDraftResources(nextInfo.resources ?? []);
+      setProjectInfoError(null);
+      setRevealedSecretIds([]);
+    },
+    [boardId]
+  );
+
   const downloadBoardReport = async () => {
     setDownloadingReport(true);
     try {
@@ -520,6 +594,11 @@ export default function BoardDetailPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchBoard();
   }, [fetchBoard]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchProjectInfo();
+  }, [fetchProjectInfo]);
 
   if (isLoading) {
     return (
@@ -970,6 +1049,109 @@ export default function BoardDetailPage() {
     router.push("/boards");
   };
 
+  const openAddResourceModal = () => {
+    setResourceModalError(null);
+    setRevealedSecretIds((prev) => prev.filter((id) => id !== "resource-modal"));
+    setResourceForm({ id: null, title: "", key: "", value: "" });
+    setShowResourceModal(true);
+  };
+
+  const openEditResourceModal = (resource: ProjectResource) => {
+    setResourceModalError(null);
+    setRevealedSecretIds((prev) => prev.filter((id) => id !== "resource-modal"));
+    setResourceForm({
+      id: resource.id,
+      title: resource.title,
+      key: resource.key,
+      value: resource.value,
+    });
+    setShowResourceModal(true);
+  };
+
+  const submitResourceModal = () => {
+    const title = resourceForm.title.trim();
+    const key = resourceForm.key.trim();
+    const value = resourceForm.value.trim();
+    if (!title || !key || !value) {
+      setResourceModalError("Title, key, and value are required.");
+      return;
+    }
+
+    if (!resourceForm.id) {
+      const next: ProjectResource = {
+        id: `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        title,
+        key,
+        value,
+        position: projectInfoDraftResources.length,
+      };
+      setProjectInfoDraftResources((prev) => [...prev, next]);
+      setShowResourceModal(false);
+      setResourceModalError(null);
+      return;
+    }
+
+    setProjectInfoDraftResources((prev) =>
+      prev.map((row) =>
+        row.id === resourceForm.id
+          ? {
+              ...row,
+              title,
+              key,
+              value,
+            }
+          : row
+      )
+    );
+    setShowResourceModal(false);
+    setResourceModalError(null);
+  };
+
+  const removeProjectResourceRow = (rowId: string) => {
+    setProjectInfoDraftResources((prev) => prev.filter((row) => row.id !== rowId));
+    setRevealedSecretIds((prev) => prev.filter((id) => id !== rowId));
+  };
+
+  const saveProjectInfo = async () => {
+    if (!projectInfo?.canEdit) return;
+    setProjectInfoSaving(true);
+    setProjectInfoError(null);
+
+    const payload = {
+      notes: projectInfoDraftNotes,
+      resources: projectInfoDraftResources
+        .map((resource) => ({
+          title: resource.title.trim(),
+          key: resource.key.trim(),
+          value: resource.value.trim(),
+        }))
+        .filter(
+          (resource) =>
+            resource.title.length > 0 && resource.key.length > 0 && resource.value.length > 0
+        ),
+    };
+
+    const response = await fetch(`/api/boards/${board.id}/project-info`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => null);
+    setProjectInfoSaving(false);
+
+    if (!response.ok || !result?.ok) {
+      setProjectInfoError(result?.error?.message ?? "Failed to save project info.");
+      return;
+    }
+
+    const nextInfo = result.data as ProjectInfo;
+    setProjectInfo(nextInfo);
+    setProjectInfoDraftNotes(nextInfo.notes ?? "");
+    setProjectInfoDraftResources(nextInfo.resources ?? []);
+    setRevealedSecretIds([]);
+    setProjectInfoError(null);
+  };
+
   return (
     <div className={`min-h-screen ${themeClassMap[board.theme] ?? themeClassMap.Slate}`}>
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
@@ -1079,12 +1261,44 @@ export default function BoardDetailPage() {
           }
           className="w-full gap-4"
         >
-          <TabsList className="inline-flex w-full flex-wrap justify-start md:w-fit">
-            <TabsTrigger value="board">Board</TabsTrigger>
-            <TabsTrigger value="list">List</TabsTrigger>
-            <TabsTrigger value="timeline">Timeline</TabsTrigger>
-            <TabsTrigger value="calendar">Calendar</TabsTrigger>
-          </TabsList>
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <TabsList className="inline-flex w-full flex-wrap justify-start md:w-fit">
+              <TabsTrigger value="board">Board</TabsTrigger>
+              <TabsTrigger value="list">List</TabsTrigger>
+              <TabsTrigger value="timeline">Timeline</TabsTrigger>
+              <TabsTrigger value="calendar">Calendar</TabsTrigger>
+            </TabsList>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setProjectInfoPanelFocus("resources");
+                  setProjectInfoError(null);
+                  setShowProjectInfoPanel(true);
+                }}
+                title="Project resources"
+              >
+                <Link2 className="size-4" />
+                <span className="ml-1 hidden sm:inline">Resources</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setProjectInfoPanelFocus("notes");
+                  setProjectInfoError(null);
+                  setShowProjectInfoPanel(true);
+                }}
+                title="Project notes"
+              >
+                <FileText className="size-4" />
+                <span className="ml-1 hidden sm:inline">Notes</span>
+              </Button>
+            </div>
+          </div>
           <TabsContent value="board" className="pt-2">
             <section className="flex gap-3 overflow-x-auto px-1 py-1 pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
             {board.columns.map((column) => (
@@ -1748,6 +1962,238 @@ export default function BoardDetailPage() {
           </TabsContent>
         </Tabs>
       </main>
+
+      <div
+        className={`fixed inset-0 z-40 transition-opacity duration-300 ${
+          showProjectInfoPanel ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      >
+        <button
+          type="button"
+          className={`absolute inset-0 bg-black/30 transition-opacity duration-300 ${
+            showProjectInfoPanel ? "opacity-100" : "opacity-0"
+          }`}
+          onClick={() => setShowProjectInfoPanel(false)}
+          aria-label="Close project info panel"
+        />
+        <aside
+          className={`absolute inset-y-0 right-0 z-50 w-full max-w-2xl overflow-y-auto border-l bg-background p-4 shadow-2xl transition-transform duration-300 ease-out md:p-6 ${
+            showProjectInfoPanel ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Project Info</h2>
+                <p className="text-sm text-muted-foreground">
+                  Shared resources and notes for board members.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {projectInfo?.canEdit ? (
+                  <>
+                    <Button size="sm" onClick={() => void saveProjectInfo()} disabled={projectInfoSaving}>
+                      {projectInfoSaving ? "Saving..." : "Save"}
+                    </Button>
+                  </>
+                ) : (
+                  <Badge variant="secondary">Member view</Badge>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setShowProjectInfoPanel(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <div
+                className={`space-y-2 ${
+                  projectInfoPanelFocus === "resources" ? "border-l-2 border-primary pl-3" : ""
+                }`}
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Resources
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    value={resourceSearch}
+                    onChange={(event) => setResourceSearch(event.target.value)}
+                    placeholder="Search resources"
+                    className="h-9 min-w-56 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  />
+                  {projectInfo?.canEdit ? (
+                    <Button size="sm" variant="outline" onClick={openAddResourceModal}>
+                      <Plus data-icon="inline-start" />
+                      Add
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="mt-2 rounded-md border">
+                  <div className="grid grid-cols-[1.1fr_1fr_1.2fr_auto] gap-2 border-b bg-muted/40 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <span>Title</span>
+                    <span>Key</span>
+                    <span>Value</span>
+                    <span>Action</span>
+                  </div>
+                  {filteredProjectResources.length === 0 ? (
+                    <p className="px-3 py-4 text-sm text-muted-foreground">No resources found.</p>
+                  ) : (
+                    filteredProjectResources.map((resource) => {
+                      const isRevealed = revealedSecretIds.includes(resource.id);
+                      const shownValue = !isRevealed ? "••••••••••" : resource.value;
+                      return (
+                        <div
+                          key={resource.id}
+                          className="grid grid-cols-[1.1fr_1fr_1.2fr_auto] items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0"
+                        >
+                          <span className="truncate font-medium">{resource.title}</span>
+                          <span className="truncate text-muted-foreground">{resource.key}</span>
+                          <span className="truncate text-muted-foreground">{shownValue}</span>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                setRevealedSecretIds((prev) =>
+                                  prev.includes(resource.id)
+                                    ? prev.filter((id) => id !== resource.id)
+                                    : [...prev, resource.id]
+                                )
+                              }
+                              aria-label={isRevealed ? "Hide value" : "Show value"}
+                            >
+                              {isRevealed ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                            </Button>
+                            {projectInfo?.canEdit ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditResourceModal(resource)}
+                                aria-label="Edit resource"
+                              >
+                                <Pencil className="size-4" />
+                              </Button>
+                            ) : null}
+                            {projectInfo?.canEdit ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeProjectResourceRow(resource.id)}
+                                aria-label="Delete resource"
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={`space-y-2 ${
+                  projectInfoPanelFocus === "notes" ? "border-l-2 border-primary pl-3" : ""
+                }`}
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Notes</p>
+                {projectInfo?.canEdit ? (
+                  <textarea
+                    rows={6}
+                    value={projectInfoDraftNotes}
+                    onChange={(event) => setProjectInfoDraftNotes(event.target.value)}
+                    placeholder="Write project notes, access guide, links, and context..."
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  />
+                ) : (
+                  <p className="whitespace-pre-wrap border-l-2 border-muted pl-3 text-sm text-muted-foreground">
+                    {projectInfoDraftNotes.trim() || "No notes yet."}
+                  </p>
+                )}
+              </div>
+
+              {projectInfoError ? <p className="text-sm text-destructive">{projectInfoError}</p> : null}
+            </div>
+        </aside>
+      </div>
+
+      {showResourceModal ? (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/35 p-4">
+          <Card className="w-full max-w-lg">
+            <CardHeader>
+              <CardTitle>{resourceForm.id ? "Edit Resource" : "Add Resource"}</CardTitle>
+              <CardDescription>Fill title, key, and value.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <input
+                value={resourceForm.title}
+                onChange={(event) =>
+                  setResourceForm((prev) => ({ ...prev, title: event.target.value }))
+                }
+                placeholder="Title (e.g. Server Access)"
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+              <input
+                value={resourceForm.key}
+                onChange={(event) =>
+                  setResourceForm((prev) => ({ ...prev, key: event.target.value }))
+                }
+                placeholder="Key (e.g. SSH_HOST)"
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  value={resourceForm.value}
+                  type={revealedSecretIds.includes("resource-modal") ? "text" : "password"}
+                  onChange={(event) =>
+                    setResourceForm((prev) => ({ ...prev, value: event.target.value }))
+                  }
+                  placeholder="Value"
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() =>
+                    setRevealedSecretIds((prev) =>
+                      prev.includes("resource-modal")
+                        ? prev.filter((id) => id !== "resource-modal")
+                        : [...prev, "resource-modal"]
+                    )
+                  }
+                  aria-label={
+                    revealedSecretIds.includes("resource-modal") ? "Hide value" : "Show value"
+                  }
+                >
+                  {revealedSecretIds.includes("resource-modal") ? (
+                    <EyeOff className="size-4" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
+                </Button>
+              </div>
+              {resourceModalError ? <p className="text-sm text-destructive">{resourceModalError}</p> : null}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowResourceModal(false);
+                    setResourceModalError(null);
+                    setRevealedSecretIds((prev) => prev.filter((id) => id !== "resource-modal"));
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={submitResourceModal}>Save</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       {taskModalColumnId ? (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/35 p-4">

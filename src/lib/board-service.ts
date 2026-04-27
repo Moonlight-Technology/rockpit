@@ -212,6 +212,106 @@ export async function getBoardDetailForUser(userId: string, boardId: string) {
   return board;
 }
 
+export async function getBoardProjectInfoForUser(userId: string, boardId: string) {
+  const board = await prisma.board.findFirst({
+    where: {
+      id: boardId,
+      closedAt: null,
+      OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+    },
+    select: { id: true, ownerId: true },
+  });
+  if (!board) return null;
+
+  const info = await prisma.boardProjectInfo.findUnique({
+    where: { boardId },
+    include: {
+      resources: {
+        orderBy: { position: "asc" },
+      },
+    },
+  });
+
+  return {
+    boardId,
+    notes: info?.notes ?? "",
+    resources:
+      info?.resources.map((resource) => ({
+        id: resource.id,
+        title: resource.title,
+        key: resource.resourceKey,
+        value: resource.value,
+        position: resource.position,
+      })) ?? [],
+    canEdit: board.ownerId === userId,
+  };
+}
+
+export async function saveBoardProjectInfoForUser(input: {
+  userId: string;
+  boardId: string;
+  notes: string;
+  resources: Array<{
+    title: string;
+    key: string;
+    value: string;
+  }>;
+}) {
+  const board = await prisma.board.findUnique({
+    where: { id: input.boardId },
+    select: { id: true, ownerId: true, closedAt: true },
+  });
+  if (!board || board.closedAt) return null;
+  if (board.ownerId !== input.userId) {
+    return { error: "OWNER_ONLY" as const };
+  }
+
+  const resources = input.resources
+    .map((resource) => ({
+      title: resource.title.trim(),
+      key: resource.key.trim(),
+      value: resource.value.trim(),
+    }))
+    .filter(
+      (resource) =>
+        resource.title.length > 0 && resource.key.length > 0 && resource.value.length > 0
+    )
+    .slice(0, 100);
+
+  await prisma.$transaction(async (tx) => {
+    const info = await tx.boardProjectInfo.upsert({
+      where: { boardId: input.boardId },
+      create: {
+        boardId: input.boardId,
+        notes: input.notes.trim() || null,
+      },
+      update: {
+        notes: input.notes.trim() || null,
+      },
+      select: { id: true },
+    });
+
+    await tx.boardProjectResource.deleteMany({
+      where: { projectInfoId: info.id },
+    });
+
+    if (resources.length > 0) {
+      await tx.boardProjectResource.createMany({
+        data: resources.map((resource, index) => ({
+          projectInfoId: info.id,
+          title: resource.title,
+          resourceKey: resource.key,
+          label: resource.key,
+          value: resource.value,
+          position: index,
+        })),
+      });
+    }
+  });
+
+  return getBoardProjectInfoForUser(input.userId, input.boardId);
+}
+
 export async function closeBoardForUser(input: { userId: string; boardId: string }) {
   const board = await prisma.board.findUnique({
     where: { id: input.boardId },
@@ -613,6 +713,57 @@ export async function listAllTasksForUser(userId: string) {
   });
 }
 
+export async function listPlannerTasksForUser(userId: string) {
+  return prisma.task.findMany({
+    where: {
+      OR: [
+        {
+          boardId: null,
+          createdById: userId,
+        },
+        {
+          board: {
+            closedAt: null,
+          },
+          OR: [{ assigneeId: userId }, { assignees: { some: { userId } } }],
+        },
+        {
+          createdById: userId,
+          OR: [
+            { boardId: null },
+            {
+              board: {
+                closedAt: null,
+                OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+              },
+            },
+          ],
+        },
+      ],
+    },
+    include: {
+      board: {
+        select: { id: true, title: true, theme: true },
+      },
+      column: {
+        select: { id: true, title: true },
+      },
+      assignee: {
+        select: { id: true, name: true, email: true, avatarUrl: true },
+      },
+      assignees: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, avatarUrl: true },
+          },
+        },
+      },
+    },
+    orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
+    take: 300,
+  });
+}
+
 export async function updateTaskStatusForUser(input: {
   userId: string;
   taskId: string;
@@ -630,7 +781,11 @@ export async function updateTaskStatusForUser(input: {
         },
         {
           boardId: null,
-          OR: [{ assigneeId: input.userId }, { assignees: { some: { userId: input.userId } } }],
+          OR: [
+            { assigneeId: input.userId },
+            { assignees: { some: { userId: input.userId } } },
+            { createdById: input.userId },
+          ],
         },
       ],
     },
@@ -732,7 +887,11 @@ export async function updateTaskForUser(input: {
         },
         {
           boardId: null,
-          OR: [{ assigneeId: input.userId }, { assignees: { some: { userId: input.userId } } }],
+          OR: [
+            { assigneeId: input.userId },
+            { assignees: { some: { userId: input.userId } } },
+            { createdById: input.userId },
+          ],
         },
       ],
     },
@@ -875,7 +1034,11 @@ export async function updateTaskScheduleForUser(input: {
         },
         {
           boardId: null,
-          OR: [{ assigneeId: input.userId }, { assignees: { some: { userId: input.userId } } }],
+          OR: [
+            { assigneeId: input.userId },
+            { assignees: { some: { userId: input.userId } } },
+            { createdById: input.userId },
+          ],
         },
       ],
     },
