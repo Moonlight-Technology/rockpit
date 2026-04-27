@@ -1,0 +1,84 @@
+<h2>RockPit Navigation Experiment</h2>
+<p class="subtitle">Compare two ways to use a floating hamburger trigger on desktop.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a-primary-nav" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">Option A: Floating Hamburger = Primary Navigation</div>
+        <div class="mockup-body">
+          <div style="position: relative; height: 280px; border-radius: 12px; background: linear-gradient(180deg, #f7f9ff 0%, #eef3ff 100%); border: 1px solid #d8e1ff; overflow: hidden;">
+            <div style="position: absolute; left: 16px; top: 16px; width: 46px; height: 46px; border-radius: 9999px; background: #ffffff; border: 1px solid #cfd9ff; display: grid; place-items: center; box-shadow: 0 6px 18px rgba(30, 56, 136, 0.16);">
+              <div style="display: flex; flex-direction: column; gap: 3px;">
+                <span style="display:block;width:16px;height:2px;background:#3c4f8f;border-radius:99px;"></span>
+                <span style="display:block;width:16px;height:2px;background:#3c4f8f;border-radius:99px;"></span>
+                <span style="display:block;width:16px;height:2px;background:#3c4f8f;border-radius:99px;"></span>
+              </div>
+            </div>
+
+            <div style="position: absolute; left: 78px; top: 12px; display: flex; gap: 10px;">
+              <div style="width: 44px; height: 44px; border-radius: 9999px; background: #ffffff; border: 1px solid #cfd9ff; display:grid;place-items:center; box-shadow: 0 6px 18px rgba(30, 56, 136, 0.15); transform: translateX(0) rotate(0deg);">🏠</div>
+              <div style="width: 44px; height: 44px; border-radius: 9999px; background: #ffffff; border: 1px solid #cfd9ff; display:grid;place-items:center; box-shadow: 0 6px 18px rgba(30, 56, 136, 0.15); transform: translateX(0) rotate(0deg);">📋</div>
+              <div style="width: 44px; height: 44px; border-radius: 9999px; background: #ffffff; border: 1px solid #cfd9ff; display:grid;place-items:center; box-shadow: 0 6px 18px rgba(30, 56, 136, 0.15); transform: translateX(0) rotate(0deg);">✅</div>
+              <div style="width: 44px; height: 44px; border-radius: 9999px; background: #ffffff; border: 1px solid #cfd9ff; display:grid;place-items:center; box-shadow: 0 6px 18px rgba(30, 56, 136, 0.15); transform: translateX(0) rotate(0deg);">⏱️</div>
+              <div style="width: 44px; height: 44px; border-radius: 9999px; background: #ffffff; border: 1px solid #cfd9ff; display:grid;place-items:center; box-shadow: 0 6px 18px rgba(30, 56, 136, 0.15); transform: translateX(0) rotate(0deg);">🚁</div>
+            </div>
+
+            <div style="position: absolute; left: 16px; top: 78px; right: 16px; bottom: 16px; border-radius: 12px; border: 1px dashed #c8d2f6; background: #fff;">
+              <div style="padding: 14px; color: #5c6999; font-size: 12px;">Workspace content area</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. Primary Nav as Floating Expanding Icons</h3>
+      <p>All page destinations are hidden behind hamburger; click expands icon row with roll-out feel.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b-quick-actions" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">Option B: Top Nav Destinations + Floating Hamburger for Quick Actions</div>
+        <div class="mockup-body">
+          <div style="position: relative; height: 280px; border-radius: 12px; background: linear-gradient(180deg, #f9fafc 0%, #eef2f9 100%); border: 1px solid #dde2ee; overflow: hidden;">
+            <div style="position: absolute; left: 0; right: 0; top: 0; height: 54px; display:flex; align-items:center; justify-content:center; gap: 10px; background: rgba(255,255,255,0.88); border-bottom:1px solid #dde2ee;">
+              <div style="padding:6px 10px;border-radius:999px;background:#2f4a8e;color:white;font-size:12px;">Home</div>
+              <div style="padding:6px 10px;border-radius:999px;background:#ffffff;color:#4f5f8a;font-size:12px;border:1px solid #d7def1;">Boards</div>
+              <div style="padding:6px 10px;border-radius:999px;background:#ffffff;color:#4f5f8a;font-size:12px;border:1px solid #d7def1;">Tasks</div>
+              <div style="padding:6px 10px;border-radius:999px;background:#ffffff;color:#4f5f8a;font-size:12px;border:1px solid #d7def1;">Planner</div>
+              <div style="padding:6px 10px;border-radius:999px;background:#ffffff;color:#4f5f8a;font-size:12px;border:1px solid #d7def1;">Helicopter</div>
+            </div>
+
+            <div style="position: absolute; right: 16px; top: 12px; width: 42px; height: 42px; border-radius: 9999px; background: #ffffff; border: 1px solid #d3dbef; display:grid; place-items:center; box-shadow: 0 8px 20px rgba(31, 45, 92, 0.16);">
+              <div style="display: flex; flex-direction: column; gap: 3px;">
+                <span style="display:block;width:14px;height:2px;background:#4b5d90;border-radius:99px;"></span>
+                <span style="display:block;width:14px;height:2px;background:#4b5d90;border-radius:99px;"></span>
+                <span style="display:block;width:14px;height:2px;background:#4b5d90;border-radius:99px;"></span>
+              </div>
+            </div>
+
+            <div style="position: absolute; right: 66px; top: 10px; display: flex; gap: 8px;">
+              <div style="width: 38px; height: 38px; border-radius: 9999px; background: #fff; border: 1px solid #d3dbef; display:grid;place-items:center; box-shadow: 0 6px 16px rgba(31, 45, 92, 0.14);">➕</div>
+              <div style="width: 38px; height: 38px; border-radius: 9999px; background: #fff; border: 1px solid #d3dbef; display:grid;place-items:center; box-shadow: 0 6px 16px rgba(31, 45, 92, 0.14);">🔍</div>
+              <div style="width: 38px; height: 38px; border-radius: 9999px; background: #fff; border: 1px solid #d3dbef; display:grid;place-items:center; box-shadow: 0 6px 16px rgba(31, 45, 92, 0.14);">🔔</div>
+            </div>
+
+            <div style="position: absolute; left: 16px; top: 72px; right: 16px; bottom: 16px; border-radius: 12px; border: 1px dashed #cfd5e3; background: #fff;">
+              <div style="padding: 14px; color: #60708f; font-size: 12px;">Workspace content area</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. Primary Nav Visible + Floating Hamburger as Quick Actions</h3>
+      <p>Destination switch stays explicit in top bar; hamburger handles fast actions (add/search/notify).</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <p class="subtitle">Click one option to select, then reply in terminal with your preference and why.</p>
+</div>

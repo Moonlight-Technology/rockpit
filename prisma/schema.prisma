@@ -23,6 +23,12 @@ enum TaskStatus {
   DONE
 }
 
+enum ProjectResourceKind {
+  TEXT
+  URL
+  SECRET
+}
+
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -51,8 +57,35 @@ model Board {
   members     BoardMember[]
   columns     BoardColumn[]
   tasks       Task[]
+  projectInfo BoardProjectInfo?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+}
+
+model BoardProjectInfo {
+  id        String                 @id @default(cuid())
+  boardId   String                 @unique
+  notes     String?
+  board     Board                  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  resources BoardProjectResource[]
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+}
+
+model BoardProjectResource {
+  id            String              @id @default(cuid())
+  projectInfoId String
+  title         String              @default("General")
+  resourceKey   String              @default("")
+  label         String
+  value         String
+  kind          ProjectResourceKind @default(TEXT)
+  position      Int                 @default(0)
+  projectInfo   BoardProjectInfo    @relation(fields: [projectInfoId], references: [id], onDelete: Cascade)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([projectInfoId, position])
 }
 
 model BoardMember {

@@ -31,11 +31,14 @@ type Task = {
   description: string | null;
   status: "TODO" | "DONE";
   priority: "HIGH" | "MEDIUM" | "LOW";
+  createdById: string;
+  assigneeId: string | null;
   startDate: string | null;
   dueDate: string | null;
   plannedStartAt: string | null;
   plannedDurationMinutes: number | null;
   assignee: { id: string; name: string; email: string } | null;
+  assignees?: Array<{ user: { id: string; name: string; email: string } }>;
   column: { id: string; title: string } | null;
   board: { id: string; title: string } | null;
 };
@@ -50,6 +53,12 @@ type AddTaskForm = {
 type PlannerBoardOption = {
   id: string;
   title: string;
+};
+
+type AssignCandidate = {
+  id: string;
+  name: string;
+  email: string;
 };
 
 type EditTaskForm = {
@@ -130,6 +139,20 @@ function formatElapsed(ms: number) {
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
+function getTaskContext(task: Task) {
+  const hasAnyAssignee = Boolean(task.assigneeId) || (task.assignees?.length ?? 0) > 0;
+  if (!task.board) {
+    return hasAnyAssignee ? "Assigned" : "Personal";
+  }
+  return hasAnyAssignee ? "Assigned" : "Board";
+}
+
+function getTaskAssigneeIds(task: Task) {
+  const multi = (task.assignees ?? []).map((item) => item.user.id);
+  if (multi.length > 0) return multi;
+  return task.assigneeId ? [task.assigneeId] : [];
+}
+
 function PlannerPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -183,6 +206,12 @@ function PlannerPageContent() {
   const [plannerBoards, setPlannerBoards] = useState<PlannerBoardOption[]>([]);
   const [editColumnOptions, setEditColumnOptions] = useState<{ id: string; title: string }[]>([]);
   const [focusBoardDefaultColumnId, setFocusBoardDefaultColumnId] = useState<string | null>(null);
+  const [assignTask, setAssignTask] = useState<Task | null>(null);
+  const [assignOptions, setAssignOptions] = useState<AssignCandidate[]>([]);
+  const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
 
   const takeEditDateSnapshot = (form: EditTaskForm): TaskDatePickerValue => ({
     startDate: form.startDate,
@@ -196,7 +225,7 @@ function PlannerPageContent() {
   const fetchTasks = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/tasks/my", { cache: "no-store" });
+      const response = await fetch("/api/tasks/planner", { cache: "no-store" });
       const result = await response.json();
       if (response.ok && result?.ok) {
         setTasks(result.data);
@@ -266,12 +295,26 @@ function PlannerPageContent() {
     []
   );
 
+  const createdUnassignedDueOnSelectedDate = useMemo(
+    () =>
+      tasks.filter((task) => {
+        if (!task.dueDate || !isSameDay(new Date(task.dueDate), selectedDate)) return false;
+        const hasLegacyAssignee = Boolean(task.assigneeId);
+        const hasMultiAssignee = (task.assignees?.length ?? 0) > 0;
+        return !hasLegacyAssignee && !hasMultiAssignee;
+      }),
+    [tasks, selectedDate]
+  );
+
   const dueOnSelectedDate = useMemo(
     () =>
       tasks.filter(
-        (task) => task.dueDate && isSameDay(new Date(task.dueDate), selectedDate)
+        (task) =>
+          task.dueDate &&
+          isSameDay(new Date(task.dueDate), selectedDate) &&
+          !createdUnassignedDueOnSelectedDate.some((unassignedTask) => unassignedTask.id === task.id)
       ),
-    [tasks, selectedDate]
+    [tasks, selectedDate, createdUnassignedDueOnSelectedDate]
   );
 
   const scheduledBlocks = useMemo(
@@ -482,6 +525,82 @@ function PlannerPageContent() {
       dueDate: toDateInputValue(selectedDate),
     });
     setShowAddTaskModal(true);
+  };
+
+  const openAssignOnlyModal = async (task: Task) => {
+    setAssignTask(task);
+    setAssignError(null);
+    setAssignSaving(false);
+    setAssignLoading(true);
+    setAssignSelectedIds(getTaskAssigneeIds(task));
+
+    if (!task.board?.id) {
+      setAssignOptions([{ id: task.createdById, name: "Me", email: "" }]);
+      setAssignSelectedIds((prev) => (prev.length > 0 ? prev : [task.createdById]));
+      setAssignLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/boards/${task.board.id}`, { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        setAssignOptions([]);
+        setAssignError("Failed to load board members.");
+        return;
+      }
+
+      const members: AssignCandidate[] = (result.data.members ?? []).map(
+        (member: { user: { id: string; name: string; email: string } }) => ({
+          id: member.user.id,
+          name: member.user.name,
+          email: member.user.email,
+        })
+      );
+      setAssignOptions(members);
+    } catch {
+      setAssignOptions([]);
+      setAssignError("Failed to load board members.");
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
+  const submitAssignOnly = async () => {
+    if (!assignTask) return;
+    if (assignSelectedIds.length === 0) {
+      setAssignError("Select at least one assignee.");
+      return;
+    }
+
+    setAssignSaving(true);
+    setAssignError(null);
+    const response = await fetch(`/api/tasks/${assignTask.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: assignTask.title,
+        description: assignTask.description ?? null,
+        startDate: assignTask.startDate,
+        dueDate: assignTask.dueDate,
+        priority: assignTask.priority,
+        boardId: assignTask.board?.id ?? null,
+        columnId: assignTask.column?.id ?? null,
+        assigneeIds: assignSelectedIds,
+      }),
+    });
+    setAssignSaving(false);
+
+    if (!response.ok) {
+      setAssignError("Failed to assign task.");
+      return;
+    }
+
+    setAssignTask(null);
+    setAssignOptions([]);
+    setAssignSelectedIds([]);
+    setAssignError(null);
+    await fetchTasks();
   };
 
   const submitAddTask = async () => {
@@ -1195,17 +1314,20 @@ function PlannerPageContent() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium">{task.title}</span>
-                      <Badge
-                        variant={
-                          task.priority === "HIGH"
-                            ? "destructive"
-                            : task.priority === "MEDIUM"
-                              ? "secondary"
-                              : "outline"
-                        }
-                      >
-                        {task.priority}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="outline">{getTaskContext(task)}</Badge>
+                        <Badge
+                          variant={
+                            task.priority === "HIGH"
+                              ? "destructive"
+                              : task.priority === "MEDIUM"
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          {task.priority}
+                        </Badge>
+                      </div>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {task.board?.title ?? "Personal Task"}
@@ -1213,6 +1335,38 @@ function PlannerPageContent() {
                     </p>
                   </button>
                 ))}
+
+                <div className="mt-4 rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Created by you, unassigned ({createdUnassignedDueOnSelectedDate.length})
+                  </p>
+                  {createdUnassignedDueOnSelectedDate.length === 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      No unassigned tasks created by you for this date.
+                    </p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {createdUnassignedDueOnSelectedDate.map((task) => (
+                        <button
+                          key={task.id}
+                          type="button"
+                          onClick={() => {
+                            void openAssignOnlyModal(task);
+                          }}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-left hover:bg-muted/50"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium">{task.title}</span>
+                            <Badge variant="outline">Unassigned</Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {task.board?.title ?? "Personal Task"}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           )}
@@ -1355,6 +1509,66 @@ function PlannerPageContent() {
                 </Button>
                 <Button onClick={submitAddTask} disabled={addingTask}>
                   {addingTask ? "Adding..." : "Add"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {assignTask ? (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/35 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>Assign Task</CardTitle>
+              <CardDescription>{assignTask.title}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {assignLoading ? <p className="text-sm text-muted-foreground">Loading assignees...</p> : null}
+              {!assignLoading && assignOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No assignee options available.</p>
+              ) : null}
+
+              {!assignLoading && assignOptions.length > 0 ? (
+                <div className="space-y-2 rounded-md border p-3">
+                  {assignOptions.map((option) => (
+                    <label key={option.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={assignSelectedIds.includes(option.id)}
+                        onCheckedChange={(checked) => {
+                          setAssignSelectedIds((prev) =>
+                            checked === true
+                              ? Array.from(new Set([...prev, option.id]))
+                              : prev.filter((id) => id !== option.id)
+                          );
+                        }}
+                      />
+                      <span>{option.name}</span>
+                      {option.email ? (
+                        <span className="text-xs text-muted-foreground">({option.email})</span>
+                      ) : null}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+
+              {assignError ? <p className="text-sm text-destructive">{assignError}</p> : null}
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setAssignTask(null);
+                    setAssignOptions([]);
+                    setAssignSelectedIds([]);
+                    setAssignError(null);
+                  }}
+                  disabled={assignSaving}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={submitAssignOnly} disabled={assignSaving || assignLoading}>
+                  {assignSaving ? "Assigning..." : "Assign"}
                 </Button>
               </div>
             </CardContent>
