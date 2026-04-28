@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Task = {
@@ -50,6 +51,8 @@ type TaskFormState = {
   columnId: string;
 };
 
+type ListSortKey = "title" | "board" | "column" | "priority" | "status" | "dueDate";
+
 export default function HelicopterPage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -57,7 +60,10 @@ export default function HelicopterPage() {
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "done">("all");
-  const [sortByDueDate, setSortByDueDate] = useState<"asc" | "desc">("asc");
+  const [listSort, setListSort] = useState<{ key: ListSortKey; direction: "asc" | "desc" }>({
+    key: "dueDate",
+    direction: "asc",
+  });
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [boards, setBoards] = useState<BoardOption[]>([]);
   const [columnOptions, setColumnOptions] = useState<ColumnOption[]>([]);
@@ -200,15 +206,52 @@ export default function HelicopterPage() {
     });
 
     filtered.sort((a, b) => {
-      const aDue = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
-      const bDue = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
-      if (aDue !== bDue) {
-        return sortByDueDate === "asc" ? aDue - bDue : bDue - aDue;
+      const priorityRank = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+      let base = 0;
+      if (listSort.key === "title") {
+        base = a.title.localeCompare(b.title);
+      } else if (listSort.key === "board") {
+        base = (a.board?.title ?? "Personal").localeCompare(b.board?.title ?? "Personal");
+      } else if (listSort.key === "column") {
+        base = (a.column?.title ?? "").localeCompare(b.column?.title ?? "");
+      } else if (listSort.key === "priority") {
+        base = priorityRank[a.priority] - priorityRank[b.priority];
+      } else if (listSort.key === "status") {
+        base = a.status.localeCompare(b.status);
+      } else {
+        const aDue = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        const bDue = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        base = aDue - bDue;
       }
-      return a.title.localeCompare(b.title);
+
+      if (base === 0) return a.title.localeCompare(b.title);
+      return listSort.direction === "asc" ? base : -base;
     });
     return filtered;
-  }, [searchQuery, selectedProjects, sortByDueDate, statusFilter, tasks]);
+  }, [listSort.direction, listSort.key, searchQuery, selectedProjects, statusFilter, tasks]);
+
+  const toggleListSort = (key: ListSortKey) => {
+    setListSort((prev) =>
+      prev.key === key
+        ? { key, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: "asc" }
+    );
+  };
+
+  const setTaskStatus = async (taskId: string, checked: boolean) => {
+    const status = checked ? "DONE" : "TODO";
+    const previous = tasks;
+    setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, status } : task)));
+    const response = await fetch(`/api/tasks/${taskId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) {
+      setTasks(previous);
+      alert("Failed to update task status.");
+    }
+  };
 
   const loadColumnsForBoard = async (boardId: string) => {
     if (!boardId) {
@@ -456,7 +499,7 @@ export default function HelicopterPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="grid gap-2 md:grid-cols-4">
+                  <div className="grid gap-2 md:grid-cols-3">
                     <input
                       value={searchQuery}
                       onChange={(event) => setSearchQuery(event.target.value)}
@@ -473,14 +516,6 @@ export default function HelicopterPage() {
                       <option value="all">All status</option>
                       <option value="open">Open only</option>
                       <option value="done">Done only</option>
-                    </select>
-                    <select
-                      value={sortByDueDate}
-                      onChange={(event) => setSortByDueDate(event.target.value as "asc" | "desc")}
-                      className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                    >
-                      <option value="asc">Due date: Earliest</option>
-                      <option value="desc">Due date: Latest</option>
                     </select>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -522,12 +557,37 @@ export default function HelicopterPage() {
                     <table className="w-full min-w-[760px] border-collapse text-sm">
                       <thead>
                         <tr className="border-b text-left text-muted-foreground">
-                          <th className="px-3 py-3 font-medium">Task</th>
-                          <th className="px-3 py-3 font-medium">Board</th>
-                          <th className="px-3 py-3 font-medium">Column</th>
-                          <th className="px-3 py-3 font-medium">Priority</th>
-                          <th className="px-3 py-3 font-medium">Status</th>
-                          <th className="px-3 py-3 font-medium">Due Date</th>
+                          <th className="w-12 px-3 py-3 font-medium">Done</th>
+                          <th className="px-3 py-3 font-medium">
+                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("title")}>
+                              Task
+                            </button>
+                          </th>
+                          <th className="px-3 py-3 font-medium">
+                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("board")}>
+                              Board
+                            </button>
+                          </th>
+                          <th className="px-3 py-3 font-medium">
+                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("column")}>
+                              Column
+                            </button>
+                          </th>
+                          <th className="px-3 py-3 font-medium">
+                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("priority")}>
+                              Priority
+                            </button>
+                          </th>
+                          <th className="px-3 py-3 font-medium">
+                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("status")}>
+                              Status
+                            </button>
+                          </th>
+                          <th className="px-3 py-3 font-medium">
+                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("dueDate")}>
+                              Due Date
+                            </button>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -537,6 +597,14 @@ export default function HelicopterPage() {
                             className="cursor-pointer border-b last:border-0 hover:bg-muted/30"
                             onClick={() => void openEditTaskModal(task)}
                           >
+                            <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                              <Checkbox
+                                checked={task.status === "DONE"}
+                                onCheckedChange={(checked) => {
+                                  void setTaskStatus(task.id, checked === true);
+                                }}
+                              />
+                            </td>
                             <td className="px-3 py-3 font-medium">{task.title}</td>
                             <td className="px-3 py-3">{task.board?.title ?? "Personal"}</td>
                             <td className="px-3 py-3">{task.column?.title ?? "-"}</td>
@@ -565,7 +633,7 @@ export default function HelicopterPage() {
                         ))}
                         {listTasks.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                            <td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">
                               No tasks match current search/filter.
                             </td>
                           </tr>
