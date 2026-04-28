@@ -42,9 +42,6 @@ export async function PATCH(
   if (!result) {
     return notFound("Board not found.");
   }
-  if ("error" in result && result.error === "OWNER_ONLY") {
-    return validationError("Only board owner can edit project info.");
-  }
 
   return NextResponse.json({ ok: true, data: result });
 }

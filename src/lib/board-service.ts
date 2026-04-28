@@ -219,7 +219,7 @@ export async function getBoardProjectInfoForUser(userId: string, boardId: string
       closedAt: null,
       OR: [{ ownerId: userId }, { members: { some: { userId } } }],
     },
-    select: { id: true, ownerId: true },
+    select: { id: true },
   });
   if (!board) return null;
 
@@ -243,7 +243,7 @@ export async function getBoardProjectInfoForUser(userId: string, boardId: string
         value: resource.value,
         position: resource.position,
       })) ?? [],
-    canEdit: board.ownerId === userId,
+    canEdit: true,
   };
 }
 
@@ -257,14 +257,15 @@ export async function saveBoardProjectInfoForUser(input: {
     value: string;
   }>;
 }) {
-  const board = await prisma.board.findUnique({
-    where: { id: input.boardId },
-    select: { id: true, ownerId: true, closedAt: true },
+  const board = await prisma.board.findFirst({
+    where: {
+      id: input.boardId,
+      closedAt: null,
+      OR: [{ ownerId: input.userId }, { members: { some: { userId: input.userId } } }],
+    },
+    select: { id: true },
   });
-  if (!board || board.closedAt) return null;
-  if (board.ownerId !== input.userId) {
-    return { error: "OWNER_ONLY" as const };
-  }
+  if (!board) return null;
 
   const resources = input.resources
     .map((resource) => ({
