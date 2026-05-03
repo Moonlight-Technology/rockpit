@@ -131,6 +131,11 @@ function parseQueryDate(value: string) {
   return Number.isNaN(parsed.getTime()) ? startOfDay(new Date()) : startOfDay(parsed);
 }
 
+function isDueOrOverdueOnDate(dueDate: string | null, selectedDate: Date) {
+  if (!dueDate) return false;
+  return startOfDay(new Date(dueDate)).getTime() <= startOfDay(selectedDate).getTime();
+}
+
 function formatElapsed(ms: number) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -161,6 +166,7 @@ function PlannerPageContent() {
       date: searchParams.get("date") ?? "",
       boardId: searchParams.get("boardId") ?? "",
       boardTitle: searchParams.get("boardTitle") ?? "",
+      scope: searchParams.get("scope") ?? "",
     }),
     [searchParams]
   );
@@ -212,6 +218,9 @@ function PlannerPageContent() {
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
+  const [includeOverdueTasks, setIncludeOverdueTasks] = useState(false);
+  const rightPanelScope: "focus" | "all" =
+    focusBoardId ? (plannerQuery.scope === "all" ? "all" : "focus") : "all";
 
   const takeEditDateSnapshot = (form: EditTaskForm): TaskDatePickerValue => ({
     startDate: form.startDate,
@@ -298,24 +307,51 @@ function PlannerPageContent() {
   const createdUnassignedDueOnSelectedDate = useMemo(
     () =>
       tasks.filter((task) => {
-        if (!task.dueDate || !isSameDay(new Date(task.dueDate), selectedDate)) return false;
+        const datePass = includeOverdueTasks
+          ? task.status !== "DONE" && isDueOrOverdueOnDate(task.dueDate, selectedDate)
+          : task.dueDate && isSameDay(new Date(task.dueDate), selectedDate);
+        if (!datePass) return false;
         const hasLegacyAssignee = Boolean(task.assigneeId);
         const hasMultiAssignee = (task.assignees?.length ?? 0) > 0;
         return !hasLegacyAssignee && !hasMultiAssignee;
       }),
-    [tasks, selectedDate]
+    [includeOverdueTasks, tasks, selectedDate]
   );
 
   const dueOnSelectedDate = useMemo(
     () =>
       tasks.filter(
         (task) =>
-          task.dueDate &&
-          isSameDay(new Date(task.dueDate), selectedDate) &&
+          (includeOverdueTasks
+            ? task.status !== "DONE" && isDueOrOverdueOnDate(task.dueDate, selectedDate)
+            : task.dueDate && isSameDay(new Date(task.dueDate), selectedDate)) &&
           !createdUnassignedDueOnSelectedDate.some((unassignedTask) => unassignedTask.id === task.id)
       ),
-    [tasks, selectedDate, createdUnassignedDueOnSelectedDate]
+    [includeOverdueTasks, tasks, selectedDate, createdUnassignedDueOnSelectedDate]
   );
+
+  const dueOnSelectedDateRightPanel = useMemo(() => {
+    if (!focusBoardId || rightPanelScope === "all") return dueOnSelectedDate;
+    return dueOnSelectedDate.filter((task) => task.board?.id === focusBoardId || !task.board);
+  }, [dueOnSelectedDate, focusBoardId, rightPanelScope]);
+
+  const createdUnassignedForRightPanel = useMemo(() => {
+    if (!focusBoardId || rightPanelScope === "all") return createdUnassignedDueOnSelectedDate;
+    return createdUnassignedDueOnSelectedDate.filter(
+      (task) => task.board?.id === focusBoardId || !task.board
+    );
+  }, [createdUnassignedDueOnSelectedDate, focusBoardId, rightPanelScope]);
+
+  const setPlannerScope = (scope: "focus" | "all") => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (scope === "focus") {
+      params.delete("scope");
+    } else {
+      params.set("scope", "all");
+    }
+    const query = params.toString();
+    router.replace(query ? `/planner?${query}` : "/planner", { scroll: false });
+  };
 
   const scheduledBlocks = useMemo(
     () =>
@@ -345,12 +381,12 @@ function PlannerPageContent() {
 
   const unscheduledTasks = useMemo(
     () =>
-      dueOnSelectedDate.filter(
+      dueOnSelectedDateRightPanel.filter(
         (task) =>
           task.status !== "DONE" &&
           (!task.plannedStartAt || !isSameDay(new Date(task.plannedStartAt), selectedDate))
       ),
-    [dueOnSelectedDate, selectedDate]
+    [dueOnSelectedDateRightPanel, selectedDate]
   );
 
   const selectedScheduledTask = useMemo(
@@ -1287,10 +1323,56 @@ function PlannerPageContent() {
                     <CardTitle>Tasks ({format(selectedDate, "MMM d")})</CardTitle>
                     <CardDescription>Due date sesuai hari yang dipilih.</CardDescription>
                   </div>
-                  <Button size="sm" onClick={openAddTaskModal}>
-                    <Plus data-icon="inline-start" />
-                    Add Task
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <label className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs text-muted-foreground">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={includeOverdueTasks}
+                        onClick={() => setIncludeOverdueTasks((prev) => !prev)}
+                        className={`relative h-5 w-9 rounded-full transition ${
+                          includeOverdueTasks ? "bg-primary" : "bg-muted"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 size-4 rounded-full bg-background shadow transition ${
+                            includeOverdueTasks ? "left-4" : "left-0.5"
+                          }`}
+                        />
+                      </button>
+                      Due + overdue
+                    </label>
+                    {focusBoardId ? (
+                      <div className="inline-flex rounded-md border bg-background p-1">
+                        <button
+                          type="button"
+                          onClick={() => setPlannerScope("focus")}
+                          className={`rounded px-2.5 py-1 text-xs ${
+                            rightPanelScope === "focus"
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          Board + Personal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPlannerScope("all")}
+                          className={`rounded px-2.5 py-1 text-xs ${
+                            rightPanelScope === "all"
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          All boards
+                        </button>
+                      </div>
+                    ) : null}
+                    <Button size="sm" onClick={openAddTaskModal}>
+                      <Plus data-icon="inline-start" />
+                      Add Task
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -1338,15 +1420,15 @@ function PlannerPageContent() {
 
                 <div className="mt-4 rounded-lg border bg-muted/30 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Created by you, unassigned ({createdUnassignedDueOnSelectedDate.length})
+                    Created by you, unassigned ({createdUnassignedForRightPanel.length})
                   </p>
-                  {createdUnassignedDueOnSelectedDate.length === 0 ? (
+                  {createdUnassignedForRightPanel.length === 0 ? (
                     <p className="mt-2 text-xs text-muted-foreground">
                       No unassigned tasks created by you for this date.
                     </p>
                   ) : (
                     <div className="mt-2 space-y-2">
-                      {createdUnassignedDueOnSelectedDate.map((task) => (
+                      {createdUnassignedForRightPanel.map((task) => (
                         <button
                           key={task.id}
                           type="button"
