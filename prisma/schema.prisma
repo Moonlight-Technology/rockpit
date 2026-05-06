@@ -29,6 +29,44 @@ enum ProjectResourceKind {
   SECRET
 }
 
+enum MoneyAccountType {
+  CASH
+  BANK
+  EWALLET
+  OTHER
+}
+
+enum MoneyCategoryKind {
+  INCOME
+  EXPENSE
+  BOTH
+}
+
+enum MoneyTransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+  LEND
+  RECEIVABLE_PAYMENT
+}
+
+enum MoneyWishlistPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum MoneyWishlistStatus {
+  PLANNED
+  BOUGHT
+  SKIPPED
+}
+
+enum MoneyReceivableStatus {
+  ACTIVE
+  PAID
+}
+
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -40,6 +78,12 @@ model User {
   assignedTasks Task[]      @relation("TaskAssignee")
   taskAssignments TaskAssignment[] @relation("TaskAssignmentUser")
   createdTasks Task[]       @relation("TaskCreator")
+  moneyAccounts      MoneyAccount[]
+  moneyCategories    MoneyCategory[]
+  moneyTransactions  MoneyTransaction[]
+  moneyBudgetPlans   MoneyBudgetPlan[]
+  moneyWishlistItems MoneyWishlistItem[]
+  moneyReceivables   MoneyReceivable[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -156,4 +200,151 @@ model TaskAssignment {
 
   @@unique([taskId, userId])
   @@index([userId, taskId])
+}
+
+model MoneyAccount {
+  id                String             @id @default(cuid())
+  userId            String
+  name              String
+  type              MoneyAccountType   @default(OTHER)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions      MoneyTransaction[] @relation("MoneyTransactionAccount")
+  outgoingTransfers MoneyTransaction[] @relation("MoneyTransactionFromAccount")
+  incomingTransfers MoneyTransaction[] @relation("MoneyTransactionToAccount")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([userId, type])
+}
+
+model MoneyCategory {
+  id            String                      @id @default(cuid())
+  userId        String
+  name          String
+  kind          MoneyCategoryKind           @default(BOTH)
+  isDefault     Boolean                     @default(false)
+  isActive      Boolean                     @default(true)
+  user          User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions  MoneyTransaction[]
+  budgetBuckets MoneyBudgetBucketCategory[]
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId, isActive])
+}
+
+model MoneyTransaction {
+  id                String                  @id @default(cuid())
+  userId            String
+  type              MoneyTransactionType
+  amount            Int
+  categoryId        String?
+  accountId         String?
+  fromAccountId     String?
+  toAccountId       String?
+  receivableId      String?
+  description       String?
+  occurredAt        DateTime
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category          MoneyCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  account           MoneyAccount?           @relation("MoneyTransactionAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  fromAccount       MoneyAccount?           @relation("MoneyTransactionFromAccount", fields: [fromAccountId], references: [id], onDelete: SetNull)
+  toAccount         MoneyAccount?           @relation("MoneyTransactionToAccount", fields: [toAccountId], references: [id], onDelete: SetNull)
+  receivable        MoneyReceivable?        @relation(fields: [receivableId], references: [id], onDelete: SetNull)
+  receivablePayment MoneyReceivablePayment?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([userId, occurredAt])
+  @@index([accountId])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+  @@index([receivableId])
+}
+
+model MoneyBudgetPlan {
+  id          String              @id @default(cuid())
+  userId      String
+  month       DateTime
+  totalAmount Int                 @default(0)
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  buckets     MoneyBudgetBucket[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([userId, month])
+}
+
+model MoneyBudgetBucket {
+  id           String                      @id @default(cuid())
+  budgetPlanId String
+  label        String
+  percentage   Int
+  position     Int                         @default(0)
+  budgetPlan   MoneyBudgetPlan             @relation(fields: [budgetPlanId], references: [id], onDelete: Cascade)
+  categories   MoneyBudgetBucketCategory[]
+  createdAt    DateTime                    @default(now())
+  updatedAt    DateTime                    @updatedAt
+
+  @@index([budgetPlanId, position])
+}
+
+model MoneyBudgetBucketCategory {
+  id         String            @id @default(cuid())
+  bucketId   String
+  categoryId String
+  bucket     MoneyBudgetBucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  category   MoneyCategory     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@unique([bucketId, categoryId])
+}
+
+model MoneyWishlistItem {
+  id             String                @id @default(cuid())
+  userId         String
+  name           String
+  estimatedPrice Int                   @default(0)
+  priority       MoneyWishlistPriority @default(MEDIUM)
+  status         MoneyWishlistStatus   @default(PLANNED)
+  notes          String?
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@index([userId, status])
+}
+
+model MoneyReceivable {
+  id              String                   @id @default(cuid())
+  userId          String
+  personName      String
+  originalAmount  Int
+  remainingAmount Int
+  status          MoneyReceivableStatus    @default(ACTIVE)
+  dueDate         DateTime?
+  notes           String?
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions    MoneyTransaction[]
+  payments        MoneyReceivablePayment[]
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@index([userId, status])
+}
+
+model MoneyReceivablePayment {
+  id            String           @id @default(cuid())
+  receivableId  String
+  transactionId String           @unique
+  amount        Int
+  paidAt        DateTime
+  receivable    MoneyReceivable  @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  transaction   MoneyTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([receivableId, paidAt])
 }
