@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { format } from "date-fns";
-import { Plus, PlaneTakeoff, CalendarDays, Menu } from "lucide-react";
+import { Plus, PlaneTakeoff, CalendarDays, Menu, WalletCards } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -550,6 +550,14 @@ export default function Home() {
             <Button
               size="sm"
               variant="outline"
+              onClick={() => router.push("/money-manager")}
+            >
+              <WalletCards data-icon="inline-start" />
+              Money Manager
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => router.push("/helicopter")}
             >
               <PlaneTakeoff data-icon="inline-start" />
@@ -593,6 +601,18 @@ export default function Home() {
                   >
                     <CalendarDays data-icon="inline-start" />
                     Planner
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      router.push("/money-manager");
+                    }}
+                  >
+                    <WalletCards data-icon="inline-start" />
+                    Money Manager
                   </Button>
                   <Button
                     size="sm"
