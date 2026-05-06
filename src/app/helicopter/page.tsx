@@ -107,6 +107,7 @@ export default function HelicopterPage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "done">("open");
@@ -445,7 +446,7 @@ export default function HelicopterPage() {
     }
 
     closeTaskModal();
-    await fetchTasks();
+    await fetchTasks({ showLoading: false });
   };
 
   const deleteTaskFromModal = async () => {
@@ -463,7 +464,7 @@ export default function HelicopterPage() {
     }
 
     closeTaskModal();
-    await fetchTasks();
+    await fetchTasks({ showLoading: false });
   };
 
   const priorityBarClass: Record<"LOW" | "MEDIUM" | "HIGH", string> = {
@@ -494,7 +495,7 @@ export default function HelicopterPage() {
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading tasks...</p>
         ) : (
-          <Tabs defaultValue="dashboard" className="w-full gap-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full gap-4">
             <TabsList className="inline-flex w-fit">
               <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
               <TabsTrigger value="list">List</TabsTrigger>
