@@ -12,7 +12,15 @@ import {
   min as minDate,
   startOfWeek,
 } from "date-fns";
-import { ArrowLeft, PlaneTakeoff, Plus, TriangleAlert } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  ArrowUpDown,
+  PlaneTakeoff,
+  Plus,
+  TriangleAlert,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -52,6 +60,48 @@ type TaskFormState = {
 };
 
 type ListSortKey = "title" | "board" | "column" | "priority" | "status" | "dueDate";
+type ListSort = { key: ListSortKey; direction: "asc" | "desc" };
+
+function SortIcon({ active, direction }: { active: boolean; direction: ListSort["direction"] }) {
+  if (!active) {
+    return <ArrowUpDown className="size-3.5 text-muted-foreground/60" aria-hidden="true" />;
+  }
+
+  return direction === "asc" ? (
+    <ArrowUp className="size-3.5" aria-hidden="true" />
+  ) : (
+    <ArrowDown className="size-3.5" aria-hidden="true" />
+  );
+}
+
+function SortableHeader({
+  label,
+  sortKey,
+  listSort,
+  onSort,
+}: {
+  label: string;
+  sortKey: ListSortKey;
+  listSort: ListSort;
+  onSort: (key: ListSortKey) => void;
+}) {
+  const active = listSort.key === sortKey;
+  const nextDirection = active && listSort.direction === "asc" ? "descending" : "ascending";
+
+  return (
+    <button
+      type="button"
+      className={`inline-flex items-center gap-1.5 rounded-sm transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+        active ? "text-foreground" : ""
+      }`}
+      onClick={() => onSort(sortKey)}
+      aria-label={`Sort by ${label} ${nextDirection}`}
+    >
+      <span>{label}</span>
+      <SortIcon active={active} direction={listSort.direction} />
+    </button>
+  );
+}
 
 export default function HelicopterPage() {
   const router = useRouter();
@@ -59,8 +109,8 @@ export default function HelicopterPage() {
   const [loading, setLoading] = useState(true);
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "done">("all");
-  const [listSort, setListSort] = useState<{ key: ListSortKey; direction: "asc" | "desc" }>({
+  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "done">("open");
+  const [listSort, setListSort] = useState<ListSort>({
     key: "dueDate",
     direction: "asc",
   });
@@ -82,8 +132,10 @@ export default function HelicopterPage() {
     columnId: "",
   });
 
-  const fetchTasks = async () => {
-    setLoading(true);
+  const fetchTasks = async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     try {
       const response = await fetch("/api/tasks/all", { cache: "no-store" });
       const result = await response.json();
@@ -91,7 +143,9 @@ export default function HelicopterPage() {
         setTasks(result.data);
       }
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -242,15 +296,26 @@ export default function HelicopterPage() {
     const status = checked ? "DONE" : "TODO";
     const previous = tasks;
     setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, status } : task)));
-    const response = await fetch(`/api/tasks/${taskId}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`/api/tasks/${taskId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+    } catch {
+      setTasks(previous);
+      alert("Failed to update task status.");
+      return;
+    }
+
     if (!response.ok) {
       setTasks(previous);
       alert("Failed to update task status.");
+      return;
     }
+
+    await fetchTasks({ showLoading: false });
   };
 
   const loadColumnsForBoard = async (boardId: string) => {
@@ -370,7 +435,6 @@ export default function HelicopterPage() {
               startDate: null,
               boardId: taskForm.boardId || null,
               columnId: taskForm.boardId ? taskForm.columnId || null : null,
-              assigneeId: null,
             }),
           });
 
@@ -559,34 +623,52 @@ export default function HelicopterPage() {
                         <tr className="border-b text-left text-muted-foreground">
                           <th className="w-12 px-3 py-3 font-medium">Done</th>
                           <th className="px-3 py-3 font-medium">
-                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("title")}>
-                              Task
-                            </button>
+                            <SortableHeader
+                              label="Task"
+                              sortKey="title"
+                              listSort={listSort}
+                              onSort={toggleListSort}
+                            />
                           </th>
                           <th className="px-3 py-3 font-medium">
-                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("board")}>
-                              Board
-                            </button>
+                            <SortableHeader
+                              label="Board"
+                              sortKey="board"
+                              listSort={listSort}
+                              onSort={toggleListSort}
+                            />
                           </th>
                           <th className="px-3 py-3 font-medium">
-                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("column")}>
-                              Column
-                            </button>
+                            <SortableHeader
+                              label="Column"
+                              sortKey="column"
+                              listSort={listSort}
+                              onSort={toggleListSort}
+                            />
                           </th>
                           <th className="px-3 py-3 font-medium">
-                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("priority")}>
-                              Priority
-                            </button>
+                            <SortableHeader
+                              label="Priority"
+                              sortKey="priority"
+                              listSort={listSort}
+                              onSort={toggleListSort}
+                            />
                           </th>
                           <th className="px-3 py-3 font-medium">
-                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("status")}>
-                              Status
-                            </button>
+                            <SortableHeader
+                              label="Status"
+                              sortKey="status"
+                              listSort={listSort}
+                              onSort={toggleListSort}
+                            />
                           </th>
                           <th className="px-3 py-3 font-medium">
-                            <button type="button" className="hover:text-foreground" onClick={() => toggleListSort("dueDate")}>
-                              Due Date
-                            </button>
+                            <SortableHeader
+                              label="Due Date"
+                              sortKey="dueDate"
+                              listSort={listSort}
+                              onSort={toggleListSort}
+                            />
                           </th>
                         </tr>
                       </thead>
