@@ -896,7 +896,17 @@ export async function updateTaskForUser(input: {
         },
       ],
     },
-    select: { id: true, boardId: true, columnId: true, status: true, position: true },
+    select: {
+      id: true,
+      boardId: true,
+      columnId: true,
+      status: true,
+      position: true,
+      assigneeId: true,
+      assignees: {
+        select: { userId: true },
+      },
+    },
   });
   if (!task) return null;
 
@@ -948,13 +958,21 @@ export async function updateTaskForUser(input: {
     }
   }
 
-  const normalizedAssigneeIds = normalizeAssigneeIds(
-    input.assigneeIds && input.assigneeIds.length > 0
-      ? input.assigneeIds
-      : input.assigneeId
-        ? [input.assigneeId]
-        : []
-  );
+  const hasAssignmentUpdate =
+    input.assigneeIds !== undefined || input.assigneeId !== undefined;
+
+  const normalizedAssigneeIds = hasAssignmentUpdate
+    ? normalizeAssigneeIds(
+        input.assigneeIds && input.assigneeIds.length > 0
+          ? input.assigneeIds
+          : input.assigneeId
+            ? [input.assigneeId]
+            : []
+      )
+    : normalizeAssigneeIds([
+        task.assigneeId,
+        ...task.assignees.map((assignment) => assignment.userId),
+      ]);
 
   if (nextBoardId && normalizedAssigneeIds.length > 0) {
     const members = await prisma.boardMember.findMany({
@@ -967,10 +985,7 @@ export async function updateTaskForUser(input: {
     if (members.length !== normalizedAssigneeIds.length) return null;
   }
 
-  const assignmentIds =
-    nextBoardId
-      ? normalizedAssigneeIds
-      : [input.userId];
+  const assignmentIds = nextBoardId ? normalizedAssigneeIds : [input.userId];
 
   return prisma.$transaction(async (tx) => {
     await tx.taskAssignment.deleteMany({ where: { taskId: input.taskId } });
