@@ -91,6 +91,11 @@ export const createWishlistItemSchema = z.object({
   notes: z.string().trim().max(1000).optional().nullable(),
 });
 
+export const updateWishlistItemSchema = z.object({
+  id: z.string().cuid(),
+  status: moneyWishlistStatusSchema,
+});
+
 export const createReceivablePaymentSchema = z.object({
   receivableId: z.string().cuid(),
   amount: amountSchema,

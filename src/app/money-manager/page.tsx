@@ -171,6 +171,31 @@ function transactionSign(transaction: MoneyTransaction) {
   return "";
 }
 
+function transactionTone(type: TransactionType) {
+  if (type === "INCOME" || type === "RECEIVABLE_PAYMENT") {
+    return {
+      icon: "bg-emerald-50 text-emerald-700",
+      amount: "text-emerald-700",
+    };
+  }
+  if (type === "EXPENSE") {
+    return {
+      icon: "bg-rose-50 text-rose-700",
+      amount: "text-rose-700",
+    };
+  }
+  if (type === "LEND") {
+    return {
+      icon: "bg-amber-50 text-amber-700",
+      amount: "text-amber-700",
+    };
+  }
+  return {
+    icon: "bg-sky-50 text-sky-700",
+    amount: "text-sky-700",
+  };
+}
+
 function budgetToDraft(budget: MoneyBudget) {
   return {
     totalAmount: String(budget.totalAmount),
@@ -224,6 +249,7 @@ export default function MoneyManagerPage() {
     totalAmount: "",
     buckets: [],
   });
+  const [budgetEditing, setBudgetEditing] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [wishlistForm, setWishlistForm] = useState({
     name: "",
@@ -232,6 +258,7 @@ export default function MoneyManagerPage() {
     notes: "",
   });
   const [wishlistError, setWishlistError] = useState<string | null>(null);
+  const [updatingWishlistId, setUpdatingWishlistId] = useState<string | null>(null);
   const [repaymentForms, setRepaymentForms] = useState<Record<string, { amount: string; accountId: string }>>({});
   const [repaymentError, setRepaymentError] = useState<string | null>(null);
 
@@ -246,6 +273,13 @@ export default function MoneyManagerPage() {
   const totalBalance = useMemo(
     () => accounts.reduce((sum, account) => sum + account.balance, 0),
     [accounts]
+  );
+  const activeWishlistBudget = useMemo(
+    () =>
+      wishlist
+        .filter((item) => item.status === "PLANNED")
+        .reduce((sum, item) => sum + item.estimatedPrice, 0),
+    [wishlist]
   );
 
   const loadMoneyData = async () => {
@@ -391,6 +425,7 @@ export default function MoneyManagerPage() {
         })),
       });
       await loadMoneyData();
+      setBudgetEditing(false);
     } catch (err) {
       setBudgetError(err instanceof Error ? err.message : "Gagal menyimpan budget.");
     }
@@ -443,6 +478,22 @@ export default function MoneyManagerPage() {
     }
   };
 
+  const toggleWishlistItem = async (item: WishlistItem, checked: boolean) => {
+    setWishlistError(null);
+    setUpdatingWishlistId(item.id);
+    try {
+      await patchApi("/api/money/wishlist", {
+        id: item.id,
+        status: checked ? "BOUGHT" : "PLANNED",
+      });
+      await loadMoneyData();
+    } catch (err) {
+      setWishlistError(err instanceof Error ? err.message : "Gagal mengubah status wishlist.");
+    } finally {
+      setUpdatingWishlistId(null);
+    }
+  };
+
   const submitRepayment = async (receivable: Receivable) => {
     setRepaymentError(null);
     const form = repaymentForms[receivable.id] ?? { amount: "", accountId: accounts[0]?.id ?? "" };
@@ -464,23 +515,23 @@ export default function MoneyManagerPage() {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f9fafc_0%,#f3f5fa_48%,#eef2f9_100%)]">
       <main className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-5 md:px-8 md:py-8">
-        <header className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
+        <header className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3">
             <Button size="icon" variant="outline" aria-label="Back to dashboard" onClick={() => router.push("/")}>
               <ArrowLeft />
             </Button>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Money Manager</h1>
-              <p className="text-sm text-muted-foreground">Saldo {formatRupiah(totalBalance)}</p>
-            </div>
+            <Input
+              className="w-36 bg-background"
+              type="month"
+              aria-label="Budget month"
+              value={month}
+              onChange={(event) => setMonth(event.target.value)}
+            />
           </div>
-          <Input
-            className="w-36 bg-background"
-            type="month"
-            aria-label="Budget month"
-            value={month}
-            onChange={(event) => setMonth(event.target.value)}
-          />
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Money Manager</h1>
+            <p className="text-sm text-muted-foreground">Saldo {formatRupiah(totalBalance)}</p>
+          </div>
         </header>
 
         {error ? (
@@ -529,35 +580,94 @@ export default function MoneyManagerPage() {
                 <CardContent className="text-sm text-muted-foreground">Belum ada transaksi bulan ini.</CardContent>
               </Card>
             ) : null}
-            {transactions.map((transaction) => (
-              <Card key={transaction.id} size="sm" className="bg-white/80">
-                <CardContent className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-9 items-center justify-center rounded-lg bg-slate-100">
-                      {transaction.type === "TRANSFER" ? <Repeat /> : <ReceiptText />}
+            {transactions.map((transaction) => {
+              const tone = transactionTone(transaction.type);
+              return (
+                <Card key={transaction.id} size="sm" className="bg-white/80">
+                  <CardContent className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className={`flex size-9 items-center justify-center rounded-lg ${tone.icon}`}>
+                        {transaction.type === "TRANSFER" ? <Repeat /> : <ReceiptText />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{transactionLabel(transaction)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(transaction.occurredAt).toLocaleDateString("id-ID")} ·{" "}
+                          {transaction.account?.name ?? transaction.fromAccount?.name ?? transaction.toAccount?.name ?? "-"}
+                        </p>
+                        {transaction.description ? (
+                          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                            {transaction.description}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{transactionLabel(transaction)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(transaction.occurredAt).toLocaleDateString("id-ID")} ·{" "}
-                        {transaction.account?.name ?? transaction.fromAccount?.name ?? transaction.toAccount?.name ?? "-"}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="shrink-0 font-semibold">
-                    {transactionSign(transaction)}
-                    {formatRupiah(transaction.amount)}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
+                    <p className={`shrink-0 font-semibold ${tone.amount}`}>
+                      {transactionSign(transaction)}
+                      {formatRupiah(transaction.amount)}
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </TabsContent>
 
           <TabsContent value="budget" className="space-y-3">
-            <form className="space-y-3" onSubmit={submitBudget}>
+            {!budgetEditing ? (
               <Card size="sm" className="bg-white/80">
                 <CardHeader>
-                  <CardTitle>Budget Bulanan</CardTitle>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle>Budget Bulanan</CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Total {formatRupiah(budget?.totalAmount ?? 0)}
+                      </p>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setBudgetEditing(true)}>
+                      Edit
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {(budget?.buckets ?? []).map((bucket) => {
+                    const usedPercent = bucket.allocatedAmount
+                      ? Math.min(100, Math.round((bucket.usedAmount / bucket.allocatedAmount) * 100))
+                      : 0;
+                    return (
+                      <div key={bucket.id} className="space-y-2 rounded-lg border bg-background/70 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium">{bucket.label}</p>
+                            <p className="text-xs text-muted-foreground">{bucket.percentage}% dari total budget</p>
+                          </div>
+                          <p className="text-right text-sm font-semibold">
+                            {formatRupiah(bucket.usedAmount)}
+                            <span className="block text-xs font-normal text-muted-foreground">
+                              dari {formatRupiah(bucket.allocatedAmount)}
+                            </span>
+                          </p>
+                        </div>
+                        <Progress value={usedPercent} />
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>{usedPercent}% terpakai</span>
+                          <span>Sisa {formatRupiah(bucket.remainingAmount)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <form className="space-y-3" onSubmit={submitBudget}>
+              <Card size="sm" className="bg-white/80">
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-3">
+                    <CardTitle>Edit Budget Bulanan</CardTitle>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setBudgetEditing(false)}>
+                      Batal
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="space-y-1.5">
@@ -645,8 +755,8 @@ export default function MoneyManagerPage() {
                   <Button type="submit" className="w-full sm:w-auto">Simpan Budget</Button>
                 </CardContent>
               </Card>
-            </form>
-            <Card size="sm" className="bg-white/80">
+                </form>
+                <Card size="sm" className="bg-white/80">
               <CardHeader>
                 <CardTitle>Kategori</CardTitle>
               </CardHeader>
@@ -696,10 +806,23 @@ export default function MoneyManagerPage() {
                   ))}
                 </div>
               </CardContent>
-            </Card>
+                </Card>
+              </>
+            )}
           </TabsContent>
 
           <TabsContent value="wishlist" className="space-y-3">
+            <Card size="sm" className="bg-white/80">
+              <CardContent className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total budget wishlist diperlukan</p>
+                  <p className="text-xl font-semibold">{formatRupiah(activeWishlistBudget)}</p>
+                </div>
+                <p className="text-right text-xs text-muted-foreground">
+                  {wishlist.filter((item) => item.status === "PLANNED").length} item aktif
+                </p>
+              </CardContent>
+            </Card>
             <Card size="sm" className="bg-white/80">
               <CardHeader>
                 <CardTitle>Wishlist Reminder</CardTitle>
@@ -742,12 +865,26 @@ export default function MoneyManagerPage() {
             {wishlist.map((item) => (
               <Card key={item.id} size="sm" className="bg-white/80">
                 <CardContent className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">{item.priority} · {item.status}</p>
-                    {item.notes ? <p className="mt-1 text-sm text-muted-foreground">{item.notes}</p> : null}
+                  <div className="flex min-w-0 items-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 size-4"
+                      checked={item.status === "BOUGHT"}
+                      disabled={updatingWishlistId === item.id}
+                      onChange={(event) => void toggleWishlistItem(item, event.target.checked)}
+                      aria-label={`Tandai ${item.name} selesai`}
+                    />
+                    <div className="min-w-0">
+                      <p className={`font-medium ${item.status === "BOUGHT" ? "text-muted-foreground line-through" : ""}`}>
+                        {item.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{item.priority} · {item.status}</p>
+                      {item.notes ? <p className="mt-1 text-sm text-muted-foreground">{item.notes}</p> : null}
+                    </div>
                   </div>
-                  <p className="font-semibold">{formatRupiah(item.estimatedPrice)}</p>
+                  <p className={`shrink-0 font-semibold ${item.status === "BOUGHT" ? "text-muted-foreground line-through" : ""}`}>
+                    {formatRupiah(item.estimatedPrice)}
+                  </p>
                 </CardContent>
               </Card>
             ))}
