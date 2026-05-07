@@ -274,6 +274,20 @@ export default function MoneyManagerPage() {
     () => accounts.reduce((sum, account) => sum + account.balance, 0),
     [accounts]
   );
+  const monthlyIncome = useMemo(
+    () =>
+      transactions
+        .filter((transaction) => transaction.type === "INCOME" || transaction.type === "RECEIVABLE_PAYMENT")
+        .reduce((sum, transaction) => sum + transaction.amount, 0),
+    [transactions]
+  );
+  const monthlyExpense = useMemo(
+    () =>
+      transactions
+        .filter((transaction) => transaction.type === "EXPENSE" || transaction.type === "LEND")
+        .reduce((sum, transaction) => sum + transaction.amount, 0),
+    [transactions]
+  );
   const activeWishlistBudget = useMemo(
     () =>
       wishlist
@@ -530,7 +544,20 @@ export default function MoneyManagerPage() {
           </div>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Money Manager</h1>
-            <p className="text-sm text-muted-foreground">Saldo {formatRupiah(totalBalance)}</p>
+            <div className="mt-2 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+              <div className="rounded-lg border bg-white/70 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Saldo</p>
+                <p className="text-sm font-semibold">{formatRupiah(totalBalance)}</p>
+              </div>
+              <div className="rounded-lg border bg-emerald-50 px-3 py-2">
+                <p className="text-xs text-emerald-700/80">Pemasukan</p>
+                <p className="text-sm font-semibold text-emerald-700">{formatRupiah(monthlyIncome)}</p>
+              </div>
+              <div className="rounded-lg border bg-rose-50 px-3 py-2">
+                <p className="text-xs text-rose-700/80">Pengeluaran</p>
+                <p className="text-sm font-semibold text-rose-700">{formatRupiah(monthlyExpense)}</p>
+              </div>
+            </div>
           </div>
         </header>
 
