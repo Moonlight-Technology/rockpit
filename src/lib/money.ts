@@ -605,6 +605,35 @@ export async function createWishlistItem(input: {
   });
 }
 
+export async function updateWishlistItemStatus(input: {
+  userId: string;
+  id: string;
+  status: MoneyWishlistStatus;
+}) {
+  const item = await prisma.moneyWishlistItem.findFirst({
+    where: { id: input.id, userId: input.userId },
+    select: { id: true },
+  });
+  if (!item) {
+    return { ok: false as const, message: "Money record not found." };
+  }
+
+  const updated = await prisma.moneyWishlistItem.update({
+    where: { id: input.id },
+    data: { status: input.status },
+    select: {
+      id: true,
+      name: true,
+      estimatedPrice: true,
+      priority: true,
+      status: true,
+      notes: true,
+    },
+  });
+
+  return { ok: true as const, data: updated };
+}
+
 export async function listReceivables(userId: string) {
   return prisma.moneyReceivable.findMany({
     where: { userId },
