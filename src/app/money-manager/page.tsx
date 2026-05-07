@@ -171,6 +171,31 @@ function transactionSign(transaction: MoneyTransaction) {
   return "";
 }
 
+function transactionTone(type: TransactionType) {
+  if (type === "INCOME" || type === "RECEIVABLE_PAYMENT") {
+    return {
+      icon: "bg-emerald-50 text-emerald-700",
+      amount: "text-emerald-700",
+    };
+  }
+  if (type === "EXPENSE") {
+    return {
+      icon: "bg-rose-50 text-rose-700",
+      amount: "text-rose-700",
+    };
+  }
+  if (type === "LEND") {
+    return {
+      icon: "bg-amber-50 text-amber-700",
+      amount: "text-amber-700",
+    };
+  }
+  return {
+    icon: "bg-sky-50 text-sky-700",
+    amount: "text-sky-700",
+  };
+}
+
 function budgetToDraft(budget: MoneyBudget) {
   return {
     totalAmount: String(budget.totalAmount),
@@ -529,28 +554,36 @@ export default function MoneyManagerPage() {
                 <CardContent className="text-sm text-muted-foreground">Belum ada transaksi bulan ini.</CardContent>
               </Card>
             ) : null}
-            {transactions.map((transaction) => (
-              <Card key={transaction.id} size="sm" className="bg-white/80">
-                <CardContent className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-9 items-center justify-center rounded-lg bg-slate-100">
-                      {transaction.type === "TRANSFER" ? <Repeat /> : <ReceiptText />}
+            {transactions.map((transaction) => {
+              const tone = transactionTone(transaction.type);
+              return (
+                <Card key={transaction.id} size="sm" className="bg-white/80">
+                  <CardContent className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className={`flex size-9 items-center justify-center rounded-lg ${tone.icon}`}>
+                        {transaction.type === "TRANSFER" ? <Repeat /> : <ReceiptText />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{transactionLabel(transaction)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(transaction.occurredAt).toLocaleDateString("id-ID")} ·{" "}
+                          {transaction.account?.name ?? transaction.fromAccount?.name ?? transaction.toAccount?.name ?? "-"}
+                        </p>
+                        {transaction.description ? (
+                          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                            {transaction.description}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{transactionLabel(transaction)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(transaction.occurredAt).toLocaleDateString("id-ID")} ·{" "}
-                        {transaction.account?.name ?? transaction.fromAccount?.name ?? transaction.toAccount?.name ?? "-"}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="shrink-0 font-semibold">
-                    {transactionSign(transaction)}
-                    {formatRupiah(transaction.amount)}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
+                    <p className={`shrink-0 font-semibold ${tone.amount}`}>
+                      {transactionSign(transaction)}
+                      {formatRupiah(transaction.amount)}
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </TabsContent>
 
           <TabsContent value="budget" className="space-y-3">
