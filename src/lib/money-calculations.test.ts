@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateAccountBalances } from "./money-calculations.ts";
+import { calculateAccountBalances, filterMoneyTransactions } from "./money-calculations.ts";
 
 test("calculateAccountBalances applies income expense transfer lend and receivable payments", () => {
   const balances = calculateAccountBalances([
@@ -13,4 +13,27 @@ test("calculateAccountBalances applies income expense transfer lend and receivab
 
   assert.equal(balances.cash, 575_000);
   assert.equal(balances.bank, 240_000);
+});
+
+test("filterMoneyTransactions filters by type group and account", () => {
+  const transactions = [
+    { id: "income", type: "INCOME", accountId: "cash" },
+    { id: "expense", type: "EXPENSE", accountId: "bank" },
+    { id: "lend", type: "LEND", accountId: "cash" },
+    { id: "payment", type: "RECEIVABLE_PAYMENT", accountId: "bank" },
+    { id: "transfer", type: "TRANSFER", fromAccountId: "cash", toAccountId: "bank" },
+  ] as const;
+
+  assert.deepEqual(
+    filterMoneyTransactions(transactions, { type: "income", accountId: "bank" }).map((item) => item.id),
+    ["payment"]
+  );
+  assert.deepEqual(
+    filterMoneyTransactions(transactions, { type: "expense", accountId: "cash" }).map((item) => item.id),
+    ["lend"]
+  );
+  assert.deepEqual(
+    filterMoneyTransactions(transactions, { type: "all", accountId: "bank" }).map((item) => item.id),
+    ["expense", "payment", "transfer"]
+  );
 });

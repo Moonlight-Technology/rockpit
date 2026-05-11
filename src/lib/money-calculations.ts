@@ -39,3 +39,34 @@ export function allocateBudgetAmount(totalAmount: number, percentage: number) {
 export function remainingReceivableAmount(originalAmount: number, payments: number[]) {
   return Math.max(0, originalAmount - payments.reduce((sum, amount) => sum + amount, 0));
 }
+
+export type MoneyTransactionFilterEntry = {
+  type: "INCOME" | "EXPENSE" | "TRANSFER" | "LEND" | "RECEIVABLE_PAYMENT";
+  accountId?: string | null;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
+};
+
+export type MoneyTransactionTypeFilter = "all" | "income" | "expense";
+
+export function filterMoneyTransactions<T extends MoneyTransactionFilterEntry>(
+  transactions: readonly T[],
+  filters: { type: MoneyTransactionTypeFilter; accountId: string }
+) {
+  return transactions.filter((transaction) => {
+    const typeMatches =
+      filters.type === "all" ||
+      (filters.type === "income" &&
+        (transaction.type === "INCOME" || transaction.type === "RECEIVABLE_PAYMENT")) ||
+      (filters.type === "expense" && (transaction.type === "EXPENSE" || transaction.type === "LEND"));
+
+    if (!typeMatches) return false;
+    if (filters.accountId === "all") return true;
+
+    return (
+      transaction.accountId === filters.accountId ||
+      transaction.fromAccountId === filters.accountId ||
+      transaction.toAccountId === filters.accountId
+    );
+  });
+}

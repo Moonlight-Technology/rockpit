@@ -12,6 +12,7 @@ import { allocateBudgetAmount, calculateAccountBalances } from "@/lib/money-calc
 import type {
   CreateMoneyTransactionInput,
   CreateReceivablePaymentInput,
+  UpdateMoneyTransactionInput,
   UpsertMoneyBudgetInput,
 } from "@/lib/validators/money";
 
@@ -98,6 +99,49 @@ async function userAccountBalances(userId: string) {
   });
 
   return calculateAccountBalances(transactions);
+}
+
+async function userAccountBalancesExcludingTransaction(userId: string, transactionId: string) {
+  const transactions = await prisma.moneyTransaction.findMany({
+    where: { userId, id: { not: transactionId } },
+    select: {
+      type: true,
+      amount: true,
+      accountId: true,
+      fromAccountId: true,
+      toAccountId: true,
+    },
+  });
+
+  return calculateAccountBalances(transactions);
+}
+
+function hasNegativeBalance(balances: Record<string, number>) {
+  return Object.values(balances).some((balance) => balance < 0);
+}
+
+function applyTransactionToBalances(
+  balances: Record<string, number>,
+  payload: UpdateMoneyTransactionInput
+) {
+  const next = { ...balances };
+  const add = (accountId: string | null | undefined, amount: number) => {
+    if (!accountId) return;
+    next[accountId] = (next[accountId] ?? 0) + amount;
+  };
+
+  if (payload.type === "INCOME") {
+    add(payload.accountId, payload.amount);
+  }
+  if (payload.type === "EXPENSE") {
+    add(payload.accountId, -payload.amount);
+  }
+  if (payload.type === "TRANSFER") {
+    add(payload.fromAccountId, -payload.amount);
+    add(payload.toAccountId, payload.amount);
+  }
+
+  return next;
 }
 
 async function requireAccounts(userId: string, accountIds: string[]) {
@@ -485,6 +529,135 @@ export async function createMoneyTransaction(userId: string, payload: CreateMone
   }
 
   return createReceivablePaymentTransaction(userId, payload);
+}
+
+export async function updateMoneyTransaction(
+  userId: string,
+  transactionId: string,
+  payload: UpdateMoneyTransactionInput
+) {
+  const existing = await prisma.moneyTransaction.findFirst({
+    where: { id: transactionId, userId },
+    select: { id: true, type: true },
+  });
+  if (!existing) {
+    return { ok: false as const, status: "not_found" as const, message: "Transaction not found." };
+  }
+  if (existing.type === MoneyTransactionType.LEND || existing.type === MoneyTransactionType.RECEIVABLE_PAYMENT) {
+    return { ok: false as const, status: "validation" as const, message: "Piutang transactions are read-only here." };
+  }
+  if (existing.type !== payload.type) {
+    return { ok: false as const, status: "validation" as const, message: "Transaction type cannot be changed." };
+  }
+
+  if (payload.type === "INCOME") {
+    const [accountExists, categoryExists] = await Promise.all([
+      requireAccounts(userId, [payload.accountId]),
+      payload.categoryId ? requireCategories(userId, [payload.categoryId]) : true,
+    ]);
+    if (!accountExists || !categoryExists) {
+      return { ok: false as const, status: "validation" as const, message: "Money record not found." };
+    }
+
+    const transaction = await prisma.moneyTransaction.update({
+      where: { id: transactionId },
+      data: {
+        amount: payload.amount,
+        accountId: payload.accountId,
+        categoryId: payload.categoryId,
+        fromAccountId: null,
+        toAccountId: null,
+        description: payload.description,
+        occurredAt: new Date(payload.occurredAt),
+      },
+      include: transactionInclude,
+    });
+    return { ok: true as const, data: mapTransaction(transaction) };
+  }
+
+  if (payload.type === "EXPENSE") {
+    const [accountExists, categoryExists, balances] = await Promise.all([
+      requireAccounts(userId, [payload.accountId]),
+      requireCategories(userId, [payload.categoryId]),
+      userAccountBalancesExcludingTransaction(userId, transactionId),
+    ]);
+    if (!accountExists || !categoryExists) {
+      return { ok: false as const, status: "validation" as const, message: "Money record not found." };
+    }
+    if (hasNegativeBalance(applyTransactionToBalances(balances, payload))) {
+      return { ok: false as const, status: "validation" as const, message: "Insufficient balance." };
+    }
+
+    const transaction = await prisma.moneyTransaction.update({
+      where: { id: transactionId },
+      data: {
+        amount: payload.amount,
+        accountId: payload.accountId,
+        categoryId: payload.categoryId,
+        fromAccountId: null,
+        toAccountId: null,
+        description: payload.description,
+        occurredAt: new Date(payload.occurredAt),
+      },
+      include: transactionInclude,
+    });
+    return { ok: true as const, data: mapTransaction(transaction) };
+  }
+
+  if (payload.fromAccountId === payload.toAccountId) {
+    return { ok: false as const, status: "validation" as const, message: "Transfer accounts must be different." };
+  }
+
+  const [accountsExist, balances] = await Promise.all([
+    requireAccounts(userId, [payload.fromAccountId, payload.toAccountId]),
+    userAccountBalancesExcludingTransaction(userId, transactionId),
+  ]);
+  if (!accountsExist) {
+    return { ok: false as const, status: "validation" as const, message: "Money record not found." };
+  }
+  if (hasNegativeBalance(applyTransactionToBalances(balances, payload))) {
+    return { ok: false as const, status: "validation" as const, message: "Insufficient balance." };
+  }
+
+  const transaction = await prisma.moneyTransaction.update({
+    where: { id: transactionId },
+    data: {
+      amount: payload.amount,
+      accountId: null,
+      categoryId: null,
+      fromAccountId: payload.fromAccountId,
+      toAccountId: payload.toAccountId,
+      description: payload.description,
+      occurredAt: new Date(payload.occurredAt),
+    },
+    include: transactionInclude,
+  });
+  return { ok: true as const, data: mapTransaction(transaction) };
+}
+
+export async function deleteMoneyTransaction(userId: string, transactionId: string) {
+  const existing = await prisma.moneyTransaction.findFirst({
+    where: { id: transactionId, userId },
+    select: { id: true, type: true },
+  });
+  if (!existing) {
+    return { ok: false as const, status: "not_found" as const, message: "Transaction not found." };
+  }
+  if (existing.type === MoneyTransactionType.LEND || existing.type === MoneyTransactionType.RECEIVABLE_PAYMENT) {
+    return { ok: false as const, status: "validation" as const, message: "Piutang transactions are read-only here." };
+  }
+
+  const balances = await userAccountBalancesExcludingTransaction(userId, transactionId);
+  if (hasNegativeBalance(balances)) {
+    return {
+      ok: false as const,
+      status: "validation" as const,
+      message: "Deleting this transaction would make an account balance negative.",
+    };
+  }
+
+  await prisma.moneyTransaction.delete({ where: { id: transactionId } });
+  return { ok: true as const };
 }
 
 export async function getOrCreateMoneyBudget(userId: string, month: string) {
