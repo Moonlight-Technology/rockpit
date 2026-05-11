@@ -67,6 +67,24 @@ export const createMoneyTransactionSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export const updateMoneyTransactionSchema = z.discriminatedUnion("type", [
+  baseTransactionSchema.extend({
+    type: z.literal("INCOME"),
+    accountId: z.string().cuid(),
+    categoryId: z.string().cuid().optional().nullable(),
+  }),
+  baseTransactionSchema.extend({
+    type: z.literal("EXPENSE"),
+    accountId: z.string().cuid(),
+    categoryId: z.string().cuid(),
+  }),
+  baseTransactionSchema.extend({
+    type: z.literal("TRANSFER"),
+    fromAccountId: z.string().cuid(),
+    toAccountId: z.string().cuid(),
+  }),
+]);
+
 export const upsertMoneyBudgetSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   totalAmount: z.number().int().min(0),
@@ -105,5 +123,6 @@ export const createReceivablePaymentSchema = z.object({
 });
 
 export type CreateMoneyTransactionInput = z.infer<typeof createMoneyTransactionSchema>;
+export type UpdateMoneyTransactionInput = z.infer<typeof updateMoneyTransactionSchema>;
 export type UpsertMoneyBudgetInput = z.infer<typeof upsertMoneyBudgetSchema>;
 export type CreateReceivablePaymentInput = z.infer<typeof createReceivablePaymentSchema>;

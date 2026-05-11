@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { filterMoneyTransactions, type MoneyTransactionTypeFilter } from "@/lib/money-calculations";
 
 type MoneyAccountType = "CASH" | "BANK" | "EWALLET" | "OTHER";
 type CategoryKind = "INCOME" | "EXPENSE" | "BOTH";
@@ -25,6 +26,7 @@ type WishlistPriority = "LOW" | "MEDIUM" | "HIGH";
 type WishlistStatus = "PLANNED" | "BOUGHT" | "SKIPPED";
 type ReceivableStatus = "ACTIVE" | "PAID";
 type ActiveForm = "INCOME" | "EXPENSE" | "TRANSFER" | "LEND" | null;
+type EditableTransactionType = "INCOME" | "EXPENSE" | "TRANSFER";
 
 type MoneyAccount = {
   id: string;
@@ -102,6 +104,16 @@ type BudgetDraftBucket = {
   categoryIds: string[];
 };
 
+type TransactionEditForm = {
+  amount: string;
+  accountId: string;
+  categoryId: string;
+  fromAccountId: string;
+  toAccountId: string;
+  description: string;
+  occurredAt: string;
+};
+
 const accountTypes: MoneyAccountType[] = ["CASH", "BANK", "EWALLET", "OTHER"];
 const categoryKinds: CategoryKind[] = ["EXPENSE", "INCOME", "BOTH"];
 const wishlistPriorities: WishlistPriority[] = ["LOW", "MEDIUM", "HIGH"];
@@ -135,6 +147,15 @@ async function patchApi(url: string, payload: unknown) {
   return writeApi(url, "PATCH", payload);
 }
 
+async function deleteApi(url: string) {
+  const response = await fetch(url, { method: "DELETE" });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.error?.message ?? "Gagal menghapus data.");
+  }
+  return result.data;
+}
+
 async function writeApi(url: string, method: "POST" | "PATCH", payload: unknown) {
   const response = await fetch(url, {
     method,
@@ -150,6 +171,14 @@ async function writeApi(url: string, method: "POST" | "PATCH", payload: unknown)
 
 function toIsoDate(date: string) {
   return new Date(`${date || todayDateValue()}T12:00:00`).toISOString();
+}
+
+function toDateValue(value: string) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function isEditableTransaction(type: TransactionType): type is EditableTransactionType {
+  return type === "INCOME" || type === "EXPENSE" || type === "TRANSFER";
 }
 
 function transactionLabel(transaction: MoneyTransaction) {
@@ -223,6 +252,21 @@ export default function MoneyManagerPage() {
   const [activeForm, setActiveForm] = useState<ActiveForm>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<MoneyTransactionTypeFilter>("all");
+  const [transactionAccountFilter, setTransactionAccountFilter] = useState("all");
+  const [selectedTransaction, setSelectedTransaction] = useState<MoneyTransaction | null>(null);
+  const [transactionEditForm, setTransactionEditForm] = useState<TransactionEditForm>({
+    amount: "",
+    accountId: "",
+    categoryId: "",
+    fromAccountId: "",
+    toAccountId: "",
+    description: "",
+    occurredAt: todayDateValue(),
+  });
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [savingDetail, setSavingDetail] = useState(false);
+  const [deletingDetail, setDeletingDetail] = useState(false);
   const [transactionForm, setTransactionForm] = useState({
     amount: "",
     accountId: "",
@@ -288,6 +332,19 @@ export default function MoneyManagerPage() {
         .reduce((sum, transaction) => sum + transaction.amount, 0),
     [transactions]
   );
+  const filteredTransactions = useMemo(
+    () =>
+      filterMoneyTransactions(
+        transactions.map((transaction) => ({
+          ...transaction,
+          accountId: transaction.account?.id ?? null,
+          fromAccountId: transaction.fromAccount?.id ?? null,
+          toAccountId: transaction.toAccount?.id ?? null,
+        })),
+        { type: transactionTypeFilter, accountId: transactionAccountFilter }
+      ),
+    [transactionAccountFilter, transactionTypeFilter, transactions]
+  );
   const activeWishlistBudget = useMemo(
     () =>
       wishlist
@@ -347,6 +404,20 @@ export default function MoneyManagerPage() {
     }));
   };
 
+  const openTransactionDetail = (transaction: MoneyTransaction) => {
+    setSelectedTransaction(transaction);
+    setDetailError(null);
+    setTransactionEditForm({
+      amount: String(transaction.amount),
+      accountId: transaction.account?.id ?? "",
+      categoryId: transaction.category?.id ?? "",
+      fromAccountId: transaction.fromAccount?.id ?? "",
+      toAccountId: transaction.toAccount?.id ?? "",
+      description: transaction.description ?? "",
+      occurredAt: toDateValue(transaction.occurredAt),
+    });
+  };
+
   const submitTransaction = async (event: FormEvent) => {
     event.preventDefault();
     if (!activeForm) return;
@@ -400,6 +471,75 @@ export default function MoneyManagerPage() {
       setFormError(err instanceof Error ? err.message : "Gagal menyimpan transaksi.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const submitTransactionDetail = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedTransaction || !isEditableTransaction(selectedTransaction.type)) return;
+
+    setDetailError(null);
+    const amount = Number(transactionEditForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setDetailError("Nominal harus lebih dari 0.");
+      return;
+    }
+    if (selectedTransaction.type === "EXPENSE" && !transactionEditForm.categoryId) {
+      setDetailError("Kategori wajib dipilih.");
+      return;
+    }
+
+    const base = {
+      type: selectedTransaction.type,
+      amount,
+      description: transactionEditForm.description.trim() || null,
+      occurredAt: toIsoDate(transactionEditForm.occurredAt),
+    };
+    const payload =
+      selectedTransaction.type === "INCOME"
+        ? {
+            ...base,
+            accountId: transactionEditForm.accountId,
+            categoryId: transactionEditForm.categoryId || null,
+          }
+        : selectedTransaction.type === "EXPENSE"
+          ? {
+              ...base,
+              accountId: transactionEditForm.accountId,
+              categoryId: transactionEditForm.categoryId,
+            }
+          : {
+              ...base,
+              fromAccountId: transactionEditForm.fromAccountId,
+              toAccountId: transactionEditForm.toAccountId,
+            };
+
+    setSavingDetail(true);
+    try {
+      await patchApi(`/api/money/transactions/${selectedTransaction.id}`, payload);
+      setSelectedTransaction(null);
+      await loadMoneyData();
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Gagal menyimpan transaksi.");
+    } finally {
+      setSavingDetail(false);
+    }
+  };
+
+  const deleteSelectedTransaction = async () => {
+    if (!selectedTransaction || !isEditableTransaction(selectedTransaction.type)) return;
+    if (!window.confirm("Hapus transaksi ini?")) return;
+
+    setDetailError(null);
+    setDeletingDetail(true);
+    try {
+      await deleteApi(`/api/money/transactions/${selectedTransaction.id}`);
+      setSelectedTransaction(null);
+      await loadMoneyData();
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Gagal menghapus transaksi.");
+    } finally {
+      setDeletingDetail(false);
     }
   };
 
@@ -601,16 +741,41 @@ export default function MoneyManagerPage() {
           </TabsList>
 
           <TabsContent value="transactions" className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <SelectField
+                label="Jenis transaksi"
+                value={transactionTypeFilter}
+                onChange={(value) => setTransactionTypeFilter(value as MoneyTransactionTypeFilter)}
+                options={[
+                  { value: "all", label: "Semua" },
+                  { value: "income", label: "Pemasukan" },
+                  { value: "expense", label: "Pengeluaran" },
+                ]}
+              />
+              <SelectField
+                label="Akun"
+                value={transactionAccountFilter}
+                onChange={setTransactionAccountFilter}
+                options={accounts.map((account) => ({ value: account.id, label: account.name }))}
+                allowEmpty
+                emptyLabel="Semua akun"
+              />
+            </div>
             {loading ? <p className="text-sm text-muted-foreground">Memuat transaksi...</p> : null}
-            {transactions.length === 0 && !loading ? (
+            {filteredTransactions.length === 0 && !loading ? (
               <Card size="sm" className="bg-white/80">
-                <CardContent className="text-sm text-muted-foreground">Belum ada transaksi bulan ini.</CardContent>
+                <CardContent className="text-sm text-muted-foreground">Belum ada transaksi yang cocok.</CardContent>
               </Card>
             ) : null}
-            {transactions.map((transaction) => {
+            {filteredTransactions.map((transaction) => {
               const tone = transactionTone(transaction.type);
               return (
-                <Card key={transaction.id} size="sm" className="bg-white/80">
+                <Card
+                  key={transaction.id}
+                  size="sm"
+                  className="cursor-pointer bg-white/80 transition hover:border-slate-300 hover:bg-white"
+                  onClick={() => openTransactionDetail(transaction)}
+                >
                   <CardContent className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <div className={`flex size-9 items-center justify-center rounded-lg ${tone.icon}`}>
@@ -1135,6 +1300,134 @@ export default function MoneyManagerPage() {
           </form>
         </div>
       ) : null}
+
+      {selectedTransaction ? (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/30 p-3 md:items-center md:justify-center">
+          <form className="w-full rounded-xl bg-background p-4 shadow-xl md:max-w-lg" onSubmit={submitTransactionDetail}>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Detail Transaksi</h2>
+                <p className="text-sm text-muted-foreground">{selectedTransaction.type}</p>
+              </div>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedTransaction(null)}>
+                Tutup
+              </Button>
+            </div>
+
+            {isEditableTransaction(selectedTransaction.type) ? (
+              <div className="grid gap-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="detail-amount">Nominal</Label>
+                  <Input
+                    id="detail-amount"
+                    inputMode="numeric"
+                    value={transactionEditForm.amount}
+                    onChange={(event) => setTransactionEditForm((prev) => ({ ...prev, amount: event.target.value }))}
+                  />
+                </div>
+                {selectedTransaction.type === "TRANSFER" ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <SelectField
+                      label="Dari akun"
+                      value={transactionEditForm.fromAccountId}
+                      onChange={(value) => setTransactionEditForm((prev) => ({ ...prev, fromAccountId: value }))}
+                      options={accounts.map((account) => ({ value: account.id, label: account.name }))}
+                    />
+                    <SelectField
+                      label="Ke akun"
+                      value={transactionEditForm.toAccountId}
+                      onChange={(value) => setTransactionEditForm((prev) => ({ ...prev, toAccountId: value }))}
+                      options={accounts.map((account) => ({ value: account.id, label: account.name }))}
+                    />
+                  </div>
+                ) : (
+                  <SelectField
+                    label="Akun"
+                    value={transactionEditForm.accountId}
+                    onChange={(value) => setTransactionEditForm((prev) => ({ ...prev, accountId: value }))}
+                    options={accounts.map((account) => ({ value: account.id, label: account.name }))}
+                  />
+                )}
+                {selectedTransaction.type === "INCOME" || selectedTransaction.type === "EXPENSE" ? (
+                  <SelectField
+                    label={selectedTransaction.type === "EXPENSE" ? "Kategori" : "Kategori opsional"}
+                    value={transactionEditForm.categoryId}
+                    onChange={(value) => setTransactionEditForm((prev) => ({ ...prev, categoryId: value }))}
+                    options={(selectedTransaction.type === "EXPENSE" ? expenseCategories : incomeCategories).map((category) => ({
+                      value: category.id,
+                      label: category.name,
+                    }))}
+                    allowEmpty={selectedTransaction.type === "INCOME"}
+                    emptyLabel="Tanpa kategori"
+                  />
+                ) : null}
+                <div className="grid gap-1.5">
+                  <Label htmlFor="detail-date">Tanggal</Label>
+                  <Input
+                    id="detail-date"
+                    type="date"
+                    value={transactionEditForm.occurredAt}
+                    onChange={(event) => setTransactionEditForm((prev) => ({ ...prev, occurredAt: event.target.value }))}
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="detail-description">Deskripsi</Label>
+                  <Input
+                    id="detail-description"
+                    value={transactionEditForm.description}
+                    onChange={(event) => setTransactionEditForm((prev) => ({ ...prev, description: event.target.value }))}
+                  />
+                </div>
+                {detailError ? <p className="text-sm text-destructive">{detailError}</p> : null}
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <Button type="submit" disabled={savingDetail}>
+                    {savingDetail ? "Menyimpan..." : "Simpan Perubahan"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={deletingDetail}
+                    onClick={() => void deleteSelectedTransaction()}
+                  >
+                    {deletingDetail ? "Menghapus..." : "Hapus"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-lg border bg-muted/40 p-3">
+                  <p className="text-sm text-muted-foreground">Nominal</p>
+                  <p className="font-semibold">{formatRupiah(selectedTransaction.amount)}</p>
+                </div>
+                <div className="rounded-lg border bg-muted/40 p-3">
+                  <p className="text-sm text-muted-foreground">Tanggal</p>
+                  <p className="font-medium">
+                    {new Date(selectedTransaction.occurredAt).toLocaleDateString("id-ID")}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-muted/40 p-3">
+                  <p className="text-sm text-muted-foreground">Akun</p>
+                  <p className="font-medium">
+                    {selectedTransaction.account?.name ??
+                      selectedTransaction.fromAccount?.name ??
+                      selectedTransaction.toAccount?.name ??
+                      "-"}
+                  </p>
+                </div>
+                {selectedTransaction.description ? (
+                  <div className="rounded-lg border bg-muted/40 p-3">
+                    <p className="text-sm text-muted-foreground">Deskripsi</p>
+                    <p className="font-medium">{selectedTransaction.description}</p>
+                  </div>
+                ) : null}
+                <p className="text-sm text-muted-foreground">
+                  Transaksi piutang belum bisa diedit atau dihapus dari tab Transaksi.
+                </p>
+              </div>
+            )}
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1145,12 +1438,14 @@ function SelectField({
   onChange,
   options,
   allowEmpty = false,
+  emptyLabel = "Tanpa kategori",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
   allowEmpty?: boolean;
+  emptyLabel?: string;
 }) {
   return (
     <div className="grid gap-1.5">
@@ -1160,7 +1455,7 @@ function SelectField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        {allowEmpty ? <option value="">Tanpa kategori</option> : null}
+        {allowEmpty ? <option value={emptyLabel === "Semua akun" ? "all" : ""}>{emptyLabel}</option> : null}
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
