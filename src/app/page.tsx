@@ -233,6 +233,10 @@ export default function Home() {
     [tasks]
   );
   const previewTasks = openTasks.slice(0, 4);
+  const ownerCompanies = useMemo(
+    () => companies.filter((company) => company.access === "OWNER"),
+    [companies]
+  );
 
   const doneCount = useMemo(
     () => tasks.filter((task) => task.status === "DONE").length,
@@ -584,6 +588,19 @@ export default function Home() {
               companies={companies}
               onOpenLockedMode={() => setShowCompanyUnlockDialog(true)}
             />
+            {ownerCompanies.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {ownerCompanies.map((company) => (
+                  <Link
+                    key={company.id}
+                    href={`/company/${company.id}`}
+                    className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-900 transition hover:border-cyan-300 hover:bg-cyan-100"
+                  >
+                    {company.name} Overview
+                  </Link>
+                ))}
+              </div>
+            ) : null}
             <p className="text-xs text-muted-foreground md:hidden">
               {format(new Date(), "EEEE, MMM d")}
             </p>

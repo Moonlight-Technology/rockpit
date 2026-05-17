@@ -3,12 +3,21 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
-function readHasCompanyMode(user: unknown) {
+export function readHasCompanyMode(user: unknown) {
   if (!user || typeof user !== "object" || !("hasCompanyMode" in user)) {
     return false;
   }
 
   return Boolean(user.hasCompanyMode);
+}
+
+export async function getHasCompanyMode(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { premiumUnlock: { select: { id: true } } },
+  });
+
+  return Boolean(user?.premiumUnlock);
 }
 
 export const authOptions: NextAuthOptions = {
@@ -67,7 +76,10 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.hasCompanyMode = readHasCompanyMode(user);
+      } else if (typeof token.id === "string") {
+        token.hasCompanyMode = await getHasCompanyMode(token.id);
       }
+
       return token;
     },
     async session({ session, token }) {
