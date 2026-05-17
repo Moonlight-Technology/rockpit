@@ -9,12 +9,14 @@ type ContextPanelProps = {
   overloadProjects: OverloadProjectRow[];
   completionSnapshot: CompletionSnapshotRow[];
   signalSummary: SignalSummary;
+  onOpenSection: (sectionId: string) => void;
 };
 
 export function ContextPanel({
   overloadProjects,
   completionSnapshot,
   signalSummary,
+  onOpenSection,
 }: ContextPanelProps) {
   return (
     <div className="space-y-4">
@@ -28,12 +30,17 @@ export function ContextPanel({
             <p className="text-sm text-muted-foreground">No board deadlines in the next 3 days.</p>
           ) : (
             overloadProjects.slice(0, 4).map((row) => (
-              <div key={row.id} className="rounded-lg border bg-card px-3 py-2">
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => onOpenSection(row.id)}
+                className="block w-full rounded-lg border bg-card px-3 py-2 text-left transition hover:bg-muted/30"
+              >
                 <p className="text-sm font-medium">{row.title}</p>
                 <p className="text-xs text-muted-foreground">
                   Due soon {row.dueSoonCount} • Open {row.openCount}
                 </p>
-              </div>
+              </button>
             ))
           )}
         </CardContent>
@@ -46,12 +53,17 @@ export function ContextPanel({
         </CardHeader>
         <CardContent className="space-y-2">
           {completionSnapshot.map((row) => (
-            <div key={row.id} className="rounded-lg border bg-card px-3 py-2">
+            <button
+              key={row.id}
+              type="button"
+              onClick={() => onOpenSection(row.id)}
+              className="block w-full rounded-lg border bg-card px-3 py-2 text-left transition hover:bg-muted/30"
+            >
               <p className="text-sm font-medium">{row.title}</p>
               <p className="text-xs text-muted-foreground">
                 Open {row.openCount} • Done {row.doneCount}
               </p>
-            </div>
+            </button>
           ))}
         </CardContent>
       </Card>
