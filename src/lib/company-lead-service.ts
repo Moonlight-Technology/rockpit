@@ -18,6 +18,17 @@ const leadBoardDetailInclude = {
   },
 } satisfies Prisma.CompanyLeadBoardInclude;
 
+type LeadWorkflowError = "FORBIDDEN" | "NOT_FOUND" | "INVALID_COLUMN" | "USER_NOT_FOUND";
+
+type LeadBoardAccessContext = {
+  boardId: string;
+  companyId: string;
+  ownerId: string;
+  isOwner: boolean;
+  isMember: boolean;
+  columns: Array<{ id: string; title: string; position: number }>;
+};
+
 function getStageFromColumnTitle(title: string) {
   switch (title.trim().toLowerCase()) {
     case "new":
@@ -37,16 +48,22 @@ function getStageFromColumnTitle(title: string) {
   }
 }
 
-async function getAccessibleLeadBoardReference(userId: string, companyId: string) {
-  return prisma.companyLeadBoard.findFirst({
-    where: {
-      companyId,
-      OR: [{ company: { ownerId: userId } }, { members: { some: { userId } } }],
-    },
+async function getPrimaryLeadBoardContext(
+  userId: string,
+  companyId: string
+): Promise<LeadBoardAccessContext | { error: LeadWorkflowError }> {
+  const boards = await prisma.companyLeadBoard.findMany({
+    where: { companyId },
+    orderBy: { createdAt: "asc" },
     select: {
       id: true,
+      companyId: true,
       company: {
         select: { ownerId: true },
+      },
+      members: {
+        where: { userId },
+        select: { userId: true },
       },
       columns: {
         select: { id: true, title: true, position: true },
@@ -54,16 +71,60 @@ async function getAccessibleLeadBoardReference(userId: string, companyId: string
       },
     },
   });
+
+  const primaryBoard = boards[0];
+  if (!primaryBoard) {
+    return { error: "NOT_FOUND" };
+  }
+
+  const isOwner = primaryBoard.company.ownerId === userId;
+  const isMember = primaryBoard.members.length > 0;
+  if (!isOwner && !isMember) {
+    return { error: "FORBIDDEN" };
+  }
+
+  return {
+    boardId: primaryBoard.id,
+    companyId: primaryBoard.companyId,
+    ownerId: primaryBoard.company.ownerId,
+    isOwner,
+    isMember,
+    columns: primaryBoard.columns,
+  };
 }
 
 export async function getLeadBoardForUser(userId: string, companyId: string) {
-  return prisma.companyLeadBoard.findFirst({
-    where: {
-      companyId,
-      OR: [{ company: { ownerId: userId } }, { members: { some: { userId } } }],
-    },
+  const context = await getPrimaryLeadBoardContext(userId, companyId);
+  if ("error" in context) {
+    return null;
+  }
+
+  return prisma.companyLeadBoard.findUnique({
+    where: { id: context.boardId },
     include: leadBoardDetailInclude,
   });
+}
+
+export async function getLeadBoardAccessForUser(userId: string, companyId: string) {
+  const context = await getPrimaryLeadBoardContext(userId, companyId);
+  if ("error" in context) {
+    return context;
+  }
+
+  const board = await prisma.companyLeadBoard.findUnique({
+    where: { id: context.boardId },
+    include: leadBoardDetailInclude,
+  });
+
+  if (!board) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  return {
+    board,
+    isOwner: context.isOwner,
+    isMember: context.isMember,
+  };
 }
 
 export async function createLeadForUser(input: {
@@ -72,20 +133,24 @@ export async function createLeadForUser(input: {
   payload: unknown;
 }) {
   const parsed = createLeadSchema.parse(input.payload);
-  const leadBoard = await getAccessibleLeadBoardReference(input.userId, input.companyId);
-  if (!leadBoard) {
-    return null;
+  const context = await getPrimaryLeadBoardContext(input.userId, input.companyId);
+  if ("error" in context) {
+    return context;
   }
 
-  const column = leadBoard.columns.find((item) => item.id === parsed.columnId);
+  if (!context.isOwner) {
+    return { error: "FORBIDDEN" as const };
+  }
+
+  const column = context.columns.find((item) => item.id === parsed.columnId);
   if (!column) {
-    return null;
+    return { error: "INVALID_COLUMN" as const };
   }
 
-  return prisma.companyLead.create({
+  const lead = await prisma.companyLead.create({
     data: {
-      companyId: input.companyId,
-      leadBoardId: leadBoard.id,
+      companyId: context.companyId,
+      leadBoardId: context.boardId,
       columnId: column.id,
       ownerUserId: input.userId,
       title: parsed.title,
@@ -95,6 +160,8 @@ export async function createLeadForUser(input: {
       stage: getStageFromColumnTitle(column.title),
     },
   });
+
+  return { data: lead };
 }
 
 export async function updateLeadForUser(input: {
@@ -104,27 +171,25 @@ export async function updateLeadForUser(input: {
   payload: unknown;
 }) {
   const parsed = updateLeadSchema.parse(input.payload);
+  const context = await getPrimaryLeadBoardContext(input.userId, input.companyId);
+  if ("error" in context) {
+    return context;
+  }
+
+  if (!context.isOwner) {
+    return { error: "FORBIDDEN" as const };
+  }
+
   const lead = await prisma.companyLead.findFirst({
     where: {
       id: input.leadId,
-      companyId: input.companyId,
-      leadBoard: {
-        OR: [{ company: { ownerId: input.userId } }, { members: { some: { userId: input.userId } } }],
-      },
+      companyId: context.companyId,
+      leadBoardId: context.boardId,
     },
-    include: {
-      leadBoard: {
-        select: {
-          id: true,
-          columns: {
-            select: { id: true, title: true },
-          },
-        },
-      },
-    },
+    select: { id: true },
   });
   if (!lead) {
-    return null;
+    return { error: "NOT_FOUND" as const };
   }
 
   const data: Prisma.CompanyLeadUpdateInput = {};
@@ -142,18 +207,20 @@ export async function updateLeadForUser(input: {
     data.notes = parsed.notes;
   }
   if (parsed.columnId !== undefined) {
-    const column = lead.leadBoard.columns.find((item) => item.id === parsed.columnId);
+    const column = context.columns.find((item) => item.id === parsed.columnId);
     if (!column) {
-      return null;
+      return { error: "INVALID_COLUMN" as const };
     }
     data.column = { connect: { id: column.id } };
     data.stage = getStageFromColumnTitle(column.title);
   }
 
-  return prisma.companyLead.update({
+  const updatedLead = await prisma.companyLead.update({
     where: { id: input.leadId },
     data,
   });
+
+  return { data: updatedLead };
 }
 
 export async function addLeadBoardMemberByEmail(input: {
@@ -161,12 +228,12 @@ export async function addLeadBoardMemberByEmail(input: {
   companyId: string;
   email: string;
 }) {
-  const leadBoard = await getAccessibleLeadBoardReference(input.userId, input.companyId);
-  if (!leadBoard) {
-    return null;
+  const context = await getPrimaryLeadBoardContext(input.userId, input.companyId);
+  if ("error" in context) {
+    return context;
   }
-  if (leadBoard.company.ownerId !== input.userId) {
-    return { error: "OWNER_ONLY" as const };
+  if (!context.isOwner) {
+    return { error: "FORBIDDEN" as const };
   }
 
   const targetUser = await prisma.user.findUnique({
@@ -180,17 +247,17 @@ export async function addLeadBoardMemberByEmail(input: {
   await prisma.companyLeadBoardMember.upsert({
     where: {
       leadBoardId_userId: {
-        leadBoardId: leadBoard.id,
+        leadBoardId: context.boardId,
         userId: targetUser.id,
       },
     },
     create: {
-      leadBoardId: leadBoard.id,
+      leadBoardId: context.boardId,
       userId: targetUser.id,
       role: BoardRole.MEMBER,
     },
     update: {},
   });
 
-  return targetUser;
+  return { data: targetUser };
 }

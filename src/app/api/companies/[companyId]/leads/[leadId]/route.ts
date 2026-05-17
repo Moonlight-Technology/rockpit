@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { updateLeadForUser } from "@/lib/company-lead-service";
-import { getSessionUserId, notFound, unauthorized, validationError } from "@/lib/api";
+import { forbidden, getSessionUserId, notFound, unauthorized, validationError } from "@/lib/api";
 
 export async function PATCH(
   req: Request,
@@ -20,12 +20,18 @@ export async function PATCH(
       return validationError("Invalid JSON payload.");
     }
 
-    const lead = await updateLeadForUser({ userId, companyId, leadId, payload });
-    if (!lead) {
+    const result = await updateLeadForUser({ userId, companyId, leadId, payload });
+    if ("error" in result) {
+      if (result.error === "FORBIDDEN") {
+        return forbidden("Only company owner can update leads.");
+      }
+      if (result.error === "INVALID_COLUMN") {
+        return validationError("Selected lead column is invalid.");
+      }
       return notFound("Lead not found.");
     }
 
-    return NextResponse.json({ ok: true, data: lead });
+    return NextResponse.json({ ok: true, data: result.data });
   } catch (error) {
     if (error instanceof ZodError) {
       return validationError(error.issues[0]?.message ?? "Invalid lead update payload.");

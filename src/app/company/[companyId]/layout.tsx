@@ -1,6 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { getSessionUserId } from "@/lib/api";
 import { canOpenCompanyShell } from "@/lib/company-auth";
+import { getLeadBoardAccessForUser } from "@/lib/company-lead-service";
 import { prisma } from "@/lib/prisma";
 import { CompanyShell } from "@/components/company/company-shell";
 
@@ -45,44 +46,36 @@ export default async function CompanyLayout({
     );
   }
 
-  const company = await prisma.company.findFirst({
-    where: {
-      id: companyId,
-      OR: [
-        { ownerId: userId },
-        {
-          leadBoards: {
-            some: {
-              members: {
-                some: { userId },
+  const [company, leadBoardAccess] = await Promise.all([
+    prisma.company.findFirst({
+      where: {
+        id: companyId,
+        OR: [
+          { ownerId: userId },
+          {
+            leadBoards: {
+              some: {
+                members: {
+                  some: { userId },
+                },
               },
             },
           },
-        },
-      ],
-    },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      quotationPrefix: true,
-      description: true,
-      ownerId: true,
-    },
-  });
-  const invitedLeadBoardIds = company
-    ? (
-        await prisma.companyLeadBoardMember.findMany({
-          where: {
-            userId,
-            leadBoard: {
-              companyId,
-            },
-          },
-          select: { leadBoardId: true },
-        })
-      ).map((membership) => membership.leadBoardId)
-    : [];
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        quotationPrefix: true,
+        description: true,
+        ownerId: true,
+      },
+    }),
+    getLeadBoardAccessForUser(userId, companyId),
+  ]);
+  const invitedLeadBoardIds =
+    !("error" in leadBoardAccess) && leadBoardAccess.isMember ? [leadBoardAccess.board.id] : [];
 
   const allowed = canOpenCompanyShell({
     isOwner: company?.ownerId === userId,

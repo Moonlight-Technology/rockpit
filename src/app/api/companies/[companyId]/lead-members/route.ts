@@ -31,18 +31,17 @@ export async function POST(
       email: parsed.data.email,
     });
 
-    if (!result) {
+    if ("error" in result) {
+      if (result.error === "FORBIDDEN") {
+        return forbidden("Only company owner can invite lead board members.");
+      }
+      if (result.error === "USER_NOT_FOUND") {
+        return notFound("User with this email is not registered.");
+      }
       return notFound("Lead board not found.");
     }
 
-    if ("error" in result) {
-      if (result.error === "OWNER_ONLY") {
-        return forbidden("Only company owner can invite lead board members.");
-      }
-      return notFound("User with this email is not registered.");
-    }
-
-    return NextResponse.json({ ok: true, data: result }, { status: 201 });
+    return NextResponse.json({ ok: true, data: result.data }, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) {
       return validationError(error.issues[0]?.message ?? "Invalid lead board member payload.");
