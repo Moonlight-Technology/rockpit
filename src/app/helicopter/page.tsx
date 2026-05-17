@@ -181,12 +181,6 @@ export default function HelicopterPage() {
 
   const openTasks = useMemo(() => tasks.filter((task) => task.status === "TODO"), [tasks]);
   const dashboardData = useMemo(() => buildHelicopterDashboardData(tasks), [tasks]);
-  const activeRiskBucket =
-    dashboardData.buckets.find(
-      (bucket) => bucket.id === selectedRiskBucket && bucket.count > 0
-    )?.id ??
-    dashboardData.buckets.find((bucket) => bucket.count > 0)?.id ??
-    "today";
 
   const timelineTasks = useMemo(
     () =>
@@ -497,7 +491,7 @@ export default function HelicopterPage() {
               <div className="grid gap-4 xl:grid-cols-[1.45fr_0.95fr]">
                 <RiskTimelinePanel
                   buckets={dashboardData.buckets}
-                  selectedBucketId={activeRiskBucket}
+                  selectedBucketId={selectedRiskBucket}
                   onSelectBucket={setSelectedRiskBucket}
                   onOpenTask={(task) => void openEditTaskModal(task)}
                 />
