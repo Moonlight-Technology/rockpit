@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 type CompanySwitcherProps = {
   hasCompanyMode: boolean;
   companies: { id: string; name: string }[];
@@ -20,24 +22,21 @@ export function CompanySwitcher({
       {hasCompanyMode ? (
         companies.length > 0 ? (
           companies.map((company) => (
-            <span
+            <Link
               key={company.id}
-              aria-disabled="true"
-              title="Company workspace routes are not available yet."
-              className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white"
+              href={`/company/${company.id}/settings`}
+              className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:border-zinc-700 hover:bg-zinc-800"
             >
               {company.name}
-            </span>
+            </Link>
           ))
         ) : (
-          <button
-            type="button"
-            aria-disabled="true"
-            title="Company mode is unlocked. Company workspace routes are not available yet."
-            className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white"
+          <Link
+            href="/company/new/settings"
+            className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:border-zinc-700 hover:bg-zinc-800"
           >
-            Company Mode Ready
-          </button>
+            Create Company
+          </Link>
         )
       ) : (
         <button

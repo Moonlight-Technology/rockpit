@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-const protectedPaths = ["/", "/boards"];
+const protectedPaths = ["/", "/boards", "/company"];
 const authPaths = ["/login", "/register"];
 
 export async function middleware(req: NextRequest) {
