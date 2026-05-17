@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, Building2, FileText, LayoutKanban, Settings } from "lucide-react";
+import { ArrowLeft, Building2, FileText, FolderOpen, LayoutKanban, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type CompanyShellProps = {
@@ -26,12 +26,14 @@ export function CompanyShell({
 }: CompanyShellProps) {
   const pathname = usePathname();
   const leadsHref = `/company/${company.id}/leads`;
+  const projectsHref = `/company/${company.id}/projects`;
   const quotationsHref = `/company/${company.id}/quotations`;
   const settingsHref = `/company/${company.id}/settings`;
   const navItems = isOnboarding
     ? [{ href: settingsHref, label: "Settings", icon: Settings }]
     : [
         { href: leadsHref, label: "Leads", icon: LayoutKanban },
+        ...(canManageSettings ? [{ href: projectsHref, label: "Projects", icon: FolderOpen }] : []),
         ...(canManageSettings
           ? [{ href: quotationsHref, label: "Quotations", icon: FileText }]
           : []),

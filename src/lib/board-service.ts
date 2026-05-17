@@ -1,4 +1,4 @@
-import { BoardRole, Prisma, TaskPriority } from "@prisma/client";
+import { BoardRole, Prisma, TaskPriority, WorkspaceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const defaultColumns = ["To Do", "In Progress", "Done"];
@@ -120,6 +120,98 @@ export async function createBoardForUser(input: {
 
     return board;
   });
+}
+
+export async function createCompanyProjectBoard(input: {
+  tx?: Prisma.TransactionClient;
+  userId: string;
+  companyId: string;
+  sourceLeadId: string;
+  title: string;
+  description: string;
+}) {
+  const createBoard = async (tx: Prisma.TransactionClient) => {
+    const board = await tx.board.create({
+      data: {
+        title: input.title,
+        description: input.description,
+        theme: "Carbon",
+        tags: ["company"],
+        ownerId: input.userId,
+        workspaceType: WorkspaceType.COMPANY,
+        companyId: input.companyId,
+        sourceLeadId: input.sourceLeadId,
+      },
+    });
+
+    await tx.boardMember.create({
+      data: {
+        boardId: board.id,
+        userId: input.userId,
+        role: BoardRole.OWNER,
+      },
+    });
+
+    await tx.boardColumn.createMany({
+      data: defaultColumns.map((title, index) => ({
+        boardId: board.id,
+        title,
+        position: index,
+      })),
+    });
+
+    return board;
+  };
+
+  if (input.tx) {
+    return createBoard(input.tx);
+  }
+
+  return prisma.$transaction(createBoard);
+}
+
+export async function listCompanyProjectBoardsForUser(userId: string, companyId: string) {
+  const company = await prisma.company.findFirst({
+    where: {
+      id: companyId,
+      ownerId: userId,
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      quotationPrefix: true,
+      description: true,
+    },
+  });
+
+  if (!company) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const boards = await prisma.board.findMany({
+    where: {
+      ownerId: userId,
+      companyId,
+      workspaceType: WorkspaceType.COMPANY,
+      closedAt: null,
+    },
+    include: {
+      _count: { select: { columns: true, tasks: true } },
+      sourceLead: {
+        select: {
+          id: true,
+          title: true,
+          prospectName: true,
+          stage: true,
+          estimatedValue: true,
+        },
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+  });
+
+  return { company, boards };
 }
 
 export async function updateBoardForUser(input: {
