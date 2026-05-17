@@ -80,6 +80,7 @@ export async function listBoardsForUser(
   const boards = await prisma.board.findMany({
     where: {
       ...(includeClosed ? {} : { closedAt: null }),
+      workspaceType: { not: WorkspaceType.COMPANY },
       OR: [{ ownerId: userId }, { members: { some: { userId } } }],
     },
     include: {

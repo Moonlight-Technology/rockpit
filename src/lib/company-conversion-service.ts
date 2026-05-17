@@ -33,6 +33,16 @@ function buildProjectBoardDescription(input: {
   return `Converted from won lead "${input.leadTitle}" for ${input.prospectName}.`;
 }
 
+class ConvertLeadToProjectTransactionError extends Error {
+  readonly reason: ConvertLeadToProjectError;
+
+  constructor(reason: ConvertLeadToProjectError) {
+    super(reason);
+    this.name = "ConvertLeadToProjectTransactionError";
+    this.reason = reason;
+  }
+}
+
 export async function convertLeadToProjectForUser(input: {
   userId: string;
   companyId: string;
@@ -77,12 +87,10 @@ export async function convertLeadToProjectForUser(input: {
         return { error: "NOT_FOUND" as const };
       }
 
-      if (lead.convertedProjectBoardId) {
-        return { error: "ALREADY_CONVERTED" as const };
-      }
-
       if (!canConvertLeadToProject(lead)) {
-        return { error: "INVALID_STAGE" as const };
+        return {
+          error: lead.convertedProjectBoardId ? ("ALREADY_CONVERTED" as const) : ("INVALID_STAGE" as const),
+        };
       }
 
       const board = await createCompanyProjectBoard({
@@ -98,12 +106,40 @@ export async function convertLeadToProjectForUser(input: {
         }),
       });
 
-      await tx.companyLead.update({
-        where: { id: lead.id },
+      const claim = await tx.companyLead.updateMany({
+        where: {
+          id: lead.id,
+          companyId: company.id,
+          stage: "WON",
+          convertedProjectBoardId: null,
+        },
         data: {
           convertedProjectBoardId: board.id,
         },
       });
+
+      if (claim.count !== 1) {
+        const currentLead = await tx.companyLead.findFirst({
+          where: {
+            id: input.leadId,
+            companyId: company.id,
+          },
+          select: {
+            stage: true,
+            convertedProjectBoardId: true,
+          },
+        });
+
+        if (!currentLead) {
+          throw new ConvertLeadToProjectTransactionError("NOT_FOUND");
+        }
+
+        if (currentLead.convertedProjectBoardId) {
+          throw new ConvertLeadToProjectTransactionError("ALREADY_CONVERTED");
+        }
+
+        throw new ConvertLeadToProjectTransactionError("INVALID_STAGE");
+      }
 
       return {
         data: {
@@ -115,6 +151,10 @@ export async function convertLeadToProjectForUser(input: {
       };
     });
   } catch (error) {
+    if (error instanceof ConvertLeadToProjectTransactionError) {
+      return { error: error.reason };
+    }
+
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
