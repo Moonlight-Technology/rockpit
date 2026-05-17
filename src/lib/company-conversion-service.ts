@@ -43,18 +43,30 @@ class ConvertLeadToProjectTransactionError extends Error {
   }
 }
 
-export async function convertLeadToProjectForUser(input: {
-  userId: string;
-  companyId: string;
-  leadId: string;
-}): Promise<ConvertLeadToProjectResult> {
-  const [{ createCompanyProjectBoard }, { prisma }] = await Promise.all([
-    import("./board-service"),
-    import("./prisma"),
-  ]);
+type ConvertLeadToProjectDependencies = {
+  prisma: {
+    $transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T>;
+  };
+  createCompanyProjectBoard(input: {
+    tx: Prisma.TransactionClient;
+    userId: string;
+    companyId: string;
+    sourceLeadId: string;
+    title: string;
+    description: string;
+  }): Promise<{ id: string }>;
+};
 
+export async function convertLeadToProjectWithDependencies(
+  input: {
+    userId: string;
+    companyId: string;
+    leadId: string;
+  },
+  dependencies: ConvertLeadToProjectDependencies
+): Promise<ConvertLeadToProjectResult> {
   try {
-    return await prisma.$transaction(async (tx) => {
+    return await dependencies.prisma.$transaction(async (tx) => {
       const company = await tx.company.findUnique({
         where: { id: input.companyId },
         select: { id: true, ownerId: true },
@@ -89,11 +101,13 @@ export async function convertLeadToProjectForUser(input: {
 
       if (!canConvertLeadToProject(lead)) {
         return {
-          error: lead.convertedProjectBoardId ? ("ALREADY_CONVERTED" as const) : ("INVALID_STAGE" as const),
+          error: lead.convertedProjectBoardId
+            ? ("ALREADY_CONVERTED" as const)
+            : ("INVALID_STAGE" as const),
         };
       }
 
-      const board = await createCompanyProjectBoard({
+      const board = await dependencies.createCompanyProjectBoard({
         tx,
         userId: input.userId,
         companyId: company.id,
@@ -164,4 +178,20 @@ export async function convertLeadToProjectForUser(input: {
 
     throw error;
   }
+}
+
+export async function convertLeadToProjectForUser(input: {
+  userId: string;
+  companyId: string;
+  leadId: string;
+}): Promise<ConvertLeadToProjectResult> {
+  const [{ createCompanyProjectBoard }, { prisma }] = await Promise.all([
+    import("./board-service"),
+    import("./prisma"),
+  ]);
+
+  return convertLeadToProjectWithDependencies(input, {
+    prisma,
+    createCompanyProjectBoard,
+  });
 }
