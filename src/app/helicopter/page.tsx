@@ -499,6 +499,13 @@ export default function HelicopterPage() {
                   overloadProjects={dashboardData.overloadProjects}
                   completionSnapshot={dashboardData.completionSnapshot}
                   signalSummary={dashboardData.signalSummary}
+                  onOpenSection={(sectionId) => {
+                    if (sectionId === "personal") {
+                      router.push("/tasks");
+                      return;
+                    }
+                    router.push(`/boards/${sectionId}`);
+                  }}
                 />
               </div>
             </TabsContent>
