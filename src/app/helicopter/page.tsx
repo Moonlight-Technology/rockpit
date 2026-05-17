@@ -19,14 +19,19 @@ import {
   ArrowUpDown,
   PlaneTakeoff,
   Plus,
-  TriangleAlert,
 } from "lucide-react";
+import { ContextPanel } from "@/components/helicopter/context-panel";
+import { RiskTimelinePanel } from "@/components/helicopter/risk-timeline-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  buildHelicopterDashboardData,
+  type RiskBucketId,
+} from "@/lib/helicopter-dashboard";
 
 type Task = {
   id: string;
@@ -108,6 +113,7 @@ export default function HelicopterPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [selectedRiskBucket, setSelectedRiskBucket] = useState<RiskBucketId>("today");
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "done">("open");
@@ -174,29 +180,13 @@ export default function HelicopterPage() {
   }, []);
 
   const openTasks = useMemo(() => tasks.filter((task) => task.status === "TODO"), [tasks]);
-  const urgentTasks = useMemo(() => {
-    const now = new Date();
-    const soon = addDays(now, 3);
-    return openTasks.filter((task) => {
-      if (task.priority === "HIGH") return true;
-      if (!task.dueDate) return false;
-      const due = new Date(task.dueDate);
-      return due <= soon;
-    });
-  }, [openTasks]);
-
-  const groupedByBoard = useMemo(() => {
-    const map = new Map<string, { name: string; open: number; done: number }>();
-    tasks.forEach((task) => {
-      const key = task.board?.id ?? "personal";
-      const name = task.board?.title ?? "Personal";
-      const current = map.get(key) ?? { name, open: 0, done: 0 };
-      if (task.status === "DONE") current.done += 1;
-      else current.open += 1;
-      map.set(key, current);
-    });
-    return Array.from(map.values()).sort((a, b) => b.open - a.open);
-  }, [tasks]);
+  const dashboardData = useMemo(() => buildHelicopterDashboardData(tasks), [tasks]);
+  const activeRiskBucket =
+    dashboardData.buckets.find(
+      (bucket) => bucket.id === selectedRiskBucket && bucket.count > 0
+    )?.id ??
+    dashboardData.buckets.find((bucket) => bucket.count > 0)?.id ??
+    "today";
 
   const timelineTasks = useMemo(
     () =>
@@ -504,48 +494,18 @@ export default function HelicopterPage() {
             </TabsList>
 
             <TabsContent value="dashboard" className="pt-2">
-              <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TriangleAlert className="size-5 text-amber-500" />
-                      Urgent Focus
-                    </CardTitle>
-                    <CardDescription>High priority or due in next 3 days.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    {urgentTasks.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No urgent tasks right now.</p>
-                    ) : null}
-                    {urgentTasks.map((task) => (
-                      <div key={task.id} className="rounded-md border bg-card px-3 py-2">
-                        <p className="text-sm font-medium">{task.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {task.board?.title ?? "Personal"}
-                          {task.column ? ` • ${task.column.title}` : ""}
-                          {task.dueDate ? ` • Due ${format(new Date(task.dueDate), "MMM d")}` : ""}
-                        </p>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Workload by Board</CardTitle>
-                    <CardDescription>Open vs done tasks overview.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    {groupedByBoard.map((row) => (
-                      <div key={row.name} className="rounded-md border bg-card px-3 py-2">
-                        <p className="text-sm font-medium">{row.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Open {row.open} • Done {row.done}
-                        </p>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
+              <div className="grid gap-4 xl:grid-cols-[1.45fr_0.95fr]">
+                <RiskTimelinePanel
+                  buckets={dashboardData.buckets}
+                  selectedBucketId={activeRiskBucket}
+                  onSelectBucket={setSelectedRiskBucket}
+                  onOpenTask={(task) => void openEditTaskModal(task)}
+                />
+                <ContextPanel
+                  overloadProjects={dashboardData.overloadProjects}
+                  completionSnapshot={dashboardData.completionSnapshot}
+                  signalSummary={dashboardData.signalSummary}
+                />
               </div>
             </TabsContent>
 
