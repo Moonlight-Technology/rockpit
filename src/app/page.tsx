@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { format } from "date-fns";
 import { Plus, PlaneTakeoff, CalendarDays, Menu, WalletCards } from "lucide-react";
+import { CompanySwitcher } from "@/components/company/company-switcher";
+import { CompanyUnlockDialog } from "@/components/company/company-unlock-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -52,6 +54,11 @@ type BoardListItem = {
 type BoardColumnOption = {
   id: string;
   title: string;
+};
+
+type CompanyListItem = {
+  id: string;
+  name: string;
 };
 
 const themes = ["Slate", "Ocean", "Sunset", "Forest", "Carbon"];
@@ -163,6 +170,9 @@ export default function Home() {
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("board");
   const [boards, setBoards] = useState<BoardListItem[]>([]);
   const [boardsLoading, setBoardsLoading] = useState(true);
+  const [companies, setCompanies] = useState<CompanyListItem[]>([]);
+  const [hasCompanyMode, setHasCompanyMode] = useState(false);
+  const [showCompanyUnlockDialog, setShowCompanyUnlockDialog] = useState(false);
 
   const [showBoardModal, setShowBoardModal] = useState(false);
   const [showBoardDueDatePicker, setShowBoardDueDatePicker] = useState(false);
@@ -213,6 +223,29 @@ export default function Home() {
     () => tasks.filter((task) => task.dueDate).map((task) => new Date(task.dueDate as string)),
     [tasks]
   );
+
+  useEffect(() => {
+    const fetchCompanies = async () => {
+      try {
+        const response = await fetch("/api/companies", { cache: "no-store" });
+        const result = await response.json().catch(() => null);
+
+        if (response.ok && result?.ok) {
+          setCompanies(result.data ?? []);
+          setHasCompanyMode(Boolean(result.meta?.hasCompanyMode ?? true));
+          return;
+        }
+
+        setCompanies([]);
+        setHasCompanyMode(false);
+      } catch {
+        setCompanies([]);
+        setHasCompanyMode(false);
+      }
+    };
+
+    void fetchCompanies();
+  }, []);
 
   useEffect(() => {
     const fetchBoards = async () => {
@@ -522,6 +555,20 @@ export default function Home() {
     await refreshMyTasks();
   };
 
+  const refreshCompanies = async () => {
+    const response = await fetch("/api/companies", { cache: "no-store" });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.ok) {
+      setCompanies([]);
+      setHasCompanyMode(false);
+      return;
+    }
+
+    setCompanies(result.data ?? []);
+    setHasCompanyMode(Boolean(result.meta?.hasCompanyMode ?? true));
+  };
+
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f9fafc_0%,#f3f5fa_48%,#eef2f9_100%)]">
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
@@ -533,6 +580,11 @@ export default function Home() {
             <p className="text-sm text-muted-foreground">
               Organize your week with one clear dashboard.
             </p>
+            <CompanySwitcher
+              hasCompanyMode={hasCompanyMode}
+              companies={companies}
+              onOpenLockedMode={() => setShowCompanyUnlockDialog(true)}
+            />
             <p className="text-xs text-muted-foreground md:hidden">
               {format(new Date(), "EEEE, MMM d")}
             </p>
@@ -844,6 +896,12 @@ export default function Home() {
           </Card>
         </section>
       </main>
+
+      <CompanyUnlockDialog
+        open={showCompanyUnlockDialog}
+        onClose={() => setShowCompanyUnlockDialog(false)}
+        onUnlocked={refreshCompanies}
+      />
 
       {showBoardModal ? (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/35 p-4">

@@ -24,7 +24,18 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = await prisma.user.findUnique({
+          where: { email },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            passwordHash: true,
+            premiumUnlock: {
+              select: { id: true },
+            },
+          },
+        });
         if (!user) {
           return null;
         }
@@ -38,6 +49,7 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           email: user.email,
           name: user.name,
+          hasCompanyMode: Boolean(user.premiumUnlock),
         };
       },
     }),
@@ -46,12 +58,24 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.hasCompanyMode = Boolean(user.hasCompanyMode);
+      } else if (token.id) {
+        const currentUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: {
+            premiumUnlock: {
+              select: { id: true },
+            },
+          },
+        });
+        token.hasCompanyMode = Boolean(currentUser?.premiumUnlock);
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id as string;
+        session.user.hasCompanyMode = Boolean(token.hasCompanyMode);
       }
       return session;
     },
