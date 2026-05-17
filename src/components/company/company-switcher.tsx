@@ -13,31 +13,32 @@ export function CompanySwitcher({
 }: CompanySwitcherProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        className="rounded-full border px-3 py-1.5 text-sm font-medium"
+      <Link
+        href="/"
+        className="rounded-full border px-3 py-1.5 text-sm font-medium transition hover:bg-zinc-50"
       >
         Personal
-      </button>
+      </Link>
       {hasCompanyMode ? (
-        companies.length > 0 ? (
-          companies.map((company) => (
+        <>
+          {companies.map((company) => (
             <Link
               key={company.id}
               href={`/company/${company.id}/settings`}
               className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:border-zinc-700 hover:bg-zinc-800"
+              title={`${company.name} settings`}
             >
-              {company.name}
+              {company.name} Settings
             </Link>
-          ))
-        ) : (
+          ))}
           <Link
             href="/company/new/settings"
             className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:border-zinc-700 hover:bg-zinc-800"
+            title="Create another company"
           >
             Create Company
           </Link>
-        )
+        </>
       ) : (
         <button
           type="button"

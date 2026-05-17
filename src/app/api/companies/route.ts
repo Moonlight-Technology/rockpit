@@ -43,8 +43,12 @@ export async function POST(req: Request) {
     return forbidden("Company mode is locked.");
   }
 
+  const payload = await req.json().catch(() => null);
+  if (payload === null) {
+    return validationError("Invalid JSON payload.");
+  }
+
   try {
-    const payload = await req.json();
     const company = await createCompanyForUser(userId, payload);
     return NextResponse.json({ ok: true, data: company }, { status: 201 });
   } catch (error) {
