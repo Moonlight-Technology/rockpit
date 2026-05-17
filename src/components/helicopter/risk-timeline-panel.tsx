@@ -2,16 +2,16 @@ import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
-  HelicopterDashboardTask,
-  RiskBucket,
+  HelicopterDashboardTaskBase,
   RiskBucketId,
+  TypedRiskBucket,
 } from "@/lib/helicopter-dashboard";
 
-type RiskTimelinePanelProps = {
-  buckets: RiskBucket[];
+type RiskTimelinePanelProps<T extends HelicopterDashboardTaskBase> = {
+  buckets: TypedRiskBucket<T>[];
   selectedBucketId: RiskBucketId;
   onSelectBucket: (bucketId: RiskBucketId) => void;
-  onOpenTask: (task: HelicopterDashboardTask) => void;
+  onOpenTask: (task: T) => void;
 };
 
 const bucketTone: Record<RiskBucketId, string> = {
@@ -20,12 +20,12 @@ const bucketTone: Record<RiskBucketId, string> = {
   next3Days: "border-sky-300/80 bg-sky-50/80",
 };
 
-export function RiskTimelinePanel({
+export function RiskTimelinePanel<T extends HelicopterDashboardTaskBase>({
   buckets,
   selectedBucketId,
   onSelectBucket,
   onOpenTask,
-}: RiskTimelinePanelProps) {
+}: RiskTimelinePanelProps<T>) {
   const selectedBucket = buckets.find((bucket) => bucket.id === selectedBucketId) ?? buckets[0];
 
   return (

@@ -1,6 +1,6 @@
 import { differenceInCalendarDays, isSameDay } from "date-fns";
 
-export type HelicopterDashboardTask = {
+export type HelicopterDashboardTaskBase = {
   id: string;
   title: string;
   dueDate: string | null;
@@ -16,8 +16,16 @@ export type RiskBucket = {
   id: RiskBucketId;
   label: "Today" | "Tomorrow" | "Next 3 Days";
   count: number;
-  preview: HelicopterDashboardTask[];
-  tasks: HelicopterDashboardTask[];
+  preview: HelicopterDashboardTaskBase[];
+  tasks: HelicopterDashboardTaskBase[];
+};
+
+export type TypedRiskBucket<T extends HelicopterDashboardTaskBase> = {
+  id: RiskBucketId;
+  label: RiskBucket["label"];
+  count: number;
+  preview: T[];
+  tasks: T[];
 };
 
 export type OverloadProjectRow = {
@@ -43,7 +51,7 @@ export type SignalSummary = {
 
 const priorityRank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
 
-function sortTasks(tasks: HelicopterDashboardTask[]) {
+function sortTasks<T extends HelicopterDashboardTaskBase>(tasks: T[]) {
   return [...tasks].sort((a, b) => {
     const priorityDiff = priorityRank[a.priority] - priorityRank[b.priority];
     if (priorityDiff !== 0) return priorityDiff;
@@ -56,11 +64,11 @@ function sortTasks(tasks: HelicopterDashboardTask[]) {
   });
 }
 
-function buildRiskBucket(
+function buildTypedRiskBucket<T extends HelicopterDashboardTaskBase>(
   id: RiskBucketId,
   label: RiskBucket["label"],
-  tasks: HelicopterDashboardTask[]
-): RiskBucket {
+  tasks: T[]
+): TypedRiskBucket<T> {
   const sortedTasks = sortTasks(tasks);
   return {
     id,
@@ -71,11 +79,11 @@ function buildRiskBucket(
   };
 }
 
-export function buildHelicopterDashboardData(
-  tasks: HelicopterDashboardTask[],
+export function buildHelicopterDashboardData<T extends HelicopterDashboardTaskBase>(
+  tasks: T[],
   now = new Date()
 ): {
-  buckets: RiskBucket[];
+  buckets: TypedRiskBucket<T>[];
   overloadProjects: OverloadProjectRow[];
   completionSnapshot: CompletionSnapshotRow[];
   signalSummary: SignalSummary;
@@ -132,9 +140,9 @@ export function buildHelicopterDashboardData(
 
   return {
     buckets: [
-      buildRiskBucket("today", "Today", todayTasks),
-      buildRiskBucket("tomorrow", "Tomorrow", tomorrowTasks),
-      buildRiskBucket("next3Days", "Next 3 Days", next3DaysTasks),
+      buildTypedRiskBucket("today", "Today", todayTasks),
+      buildTypedRiskBucket("tomorrow", "Tomorrow", tomorrowTasks),
+      buildTypedRiskBucket("next3Days", "Next 3 Days", next3DaysTasks),
     ],
     overloadProjects: [...dueSoonByBoard.values()].sort((a, b) => {
       if (b.dueSoonCount !== a.dueSoonCount) return b.dueSoonCount - a.dueSoonCount;
