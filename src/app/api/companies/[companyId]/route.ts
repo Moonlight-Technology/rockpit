@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { forbidden, getSessionUserId, notFound, unauthorized } from "@/lib/api";
-import { getCompanyForUser } from "@/lib/company-service";
 import { canOpenCompanyShell } from "@/lib/company-auth";
 import { prisma } from "@/lib/prisma";
 
@@ -14,18 +13,54 @@ export async function GET(
   }
 
   const { companyId } = await params;
-  const [user, company] = await Promise.all([
+  const [user, company, invitedMemberships] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: { premiumUnlock: { select: { id: true } } },
     }),
-    getCompanyForUser(userId, companyId),
+    prisma.company.findFirst({
+      where: {
+        id: companyId,
+        OR: [
+          { ownerId: userId },
+          {
+            leadBoards: {
+              some: {
+                members: {
+                  some: { userId },
+                },
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        businessType: true,
+        quotationPrefix: true,
+        createdAt: true,
+        updatedAt: true,
+        ownerId: true,
+      },
+    }),
+    prisma.companyLeadBoardMember.findMany({
+      where: {
+        userId,
+        leadBoard: {
+          companyId,
+        },
+      },
+      select: { leadBoardId: true },
+    }),
   ]);
 
   const allowed = canOpenCompanyShell({
-    isOwner: Boolean(company),
+    isOwner: company?.ownerId === userId,
     hasPremiumUnlock: Boolean(user?.premiumUnlock),
-    invitedLeadBoardIds: [],
+    invitedLeadBoardIds: invitedMemberships.map((membership) => membership.leadBoardId),
   });
 
   if (!allowed && !user?.premiumUnlock) {

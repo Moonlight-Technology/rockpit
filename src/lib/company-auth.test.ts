@@ -19,3 +19,14 @@ test("canOpenCompanyShell rejects invited non-premium collaborators", () => {
     false
   );
 });
+
+test("canOpenCompanyShell allows invited premium collaborators", () => {
+  assert.equal(
+    canOpenCompanyShell({
+      isOwner: false,
+      hasPremiumUnlock: true,
+      invitedLeadBoardIds: ["lead-board-1"],
+    }),
+    true
+  );
+});

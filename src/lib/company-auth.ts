@@ -3,5 +3,5 @@ export function canOpenCompanyShell(input: {
   hasPremiumUnlock: boolean;
   invitedLeadBoardIds: string[];
 }) {
-  return input.isOwner && input.hasPremiumUnlock;
+  return input.hasPremiumUnlock && (input.isOwner || input.invitedLeadBoardIds.length > 0);
 }
