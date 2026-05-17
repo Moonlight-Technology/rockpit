@@ -1,3 +1,4 @@
+import type { DefaultSession } from "next-auth";
 import "next-auth";
 import "next-auth/jwt";
 
@@ -6,10 +7,7 @@ declare module "next-auth" {
     user: {
       id: string;
       hasCompanyMode?: boolean;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-    };
+    } & DefaultSession["user"];
   }
 }
 

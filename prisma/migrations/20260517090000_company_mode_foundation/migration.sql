@@ -103,7 +103,7 @@ CREATE TABLE "public"."CompanyQuotation" (
     "status" "public"."CompanyQuotationStatus" NOT NULL DEFAULT 'DRAFT',
     "subtotal" INTEGER NOT NULL,
     "total" INTEGER NOT NULL,
-    "issuedAt" TIMESTAMP(3) NOT NULL,
+    "issuedAt" TIMESTAMP(3),
     "createdByUserId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,

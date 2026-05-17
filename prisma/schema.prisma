@@ -236,7 +236,7 @@ model CompanyQuotation {
   status          CompanyQuotationStatus @default(DRAFT)
   subtotal        Int
   total           Int
-  issuedAt        DateTime
+  issuedAt        DateTime?
   createdByUserId String
   company         Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   lead            CompanyLead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
