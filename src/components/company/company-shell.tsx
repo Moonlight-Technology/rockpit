@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, Building2, LayoutKanban, Settings } from "lucide-react";
+import { ArrowLeft, Building2, FileText, LayoutKanban, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type CompanyShellProps = {
@@ -26,11 +26,15 @@ export function CompanyShell({
 }: CompanyShellProps) {
   const pathname = usePathname();
   const leadsHref = `/company/${company.id}/leads`;
+  const quotationsHref = `/company/${company.id}/quotations`;
   const settingsHref = `/company/${company.id}/settings`;
   const navItems = isOnboarding
     ? [{ href: settingsHref, label: "Settings", icon: Settings }]
     : [
         { href: leadsHref, label: "Leads", icon: LayoutKanban },
+        ...(canManageSettings
+          ? [{ href: quotationsHref, label: "Quotations", icon: FileText }]
+          : []),
         ...(canManageSettings ? [{ href: settingsHref, label: "Settings", icon: Settings }] : []),
       ];
 
@@ -71,7 +75,7 @@ export function CompanyShell({
             <nav className="flex flex-wrap gap-2">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href;
+                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
                 return (
                   <Link
