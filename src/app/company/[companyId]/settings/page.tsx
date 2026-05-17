@@ -3,6 +3,7 @@ import { CompanyOnboardingForm } from "@/components/company/company-onboarding-f
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSessionUserId } from "@/lib/api";
 import { getCompanyForUser } from "@/lib/company-service";
+import { prisma } from "@/lib/prisma";
 
 export default async function CompanySettingsPage({
   params,
@@ -20,7 +21,23 @@ export default async function CompanySettingsPage({
     return <CompanyOnboardingForm />;
   }
 
-  const company = await getCompanyForUser(userId, companyId);
+  const [company, invitedBoard] = await Promise.all([
+    getCompanyForUser(userId, companyId),
+    prisma.companyLeadBoard.findFirst({
+      where: {
+        companyId,
+        members: {
+          some: { userId },
+        },
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!company && invitedBoard) {
+    redirect(`/company/${companyId}/leads`);
+  }
+
   if (!company) {
     notFound();
   }

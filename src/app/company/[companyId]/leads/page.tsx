@@ -3,6 +3,7 @@ import { LeadBoard } from "@/components/company/lead-board";
 import { getSessionUserId } from "@/lib/api";
 import { getLeadBoardForUser } from "@/lib/company-lead-service";
 import { groupLeadsByColumn } from "@/lib/company-overview";
+import { prisma } from "@/lib/prisma";
 
 export default async function CompanyLeadsPage({
   params,
@@ -15,10 +16,17 @@ export default async function CompanyLeadsPage({
   }
 
   const { companyId } = await params;
-  const leadBoard = await getLeadBoardForUser(userId, companyId);
+  const [leadBoard, company] = await Promise.all([
+    getLeadBoardForUser(userId, companyId),
+    prisma.company.findFirst({
+      where: { id: companyId },
+      select: { ownerId: true },
+    }),
+  ]);
   if (!leadBoard) {
     notFound();
   }
+  const isOwner = company?.ownerId === userId;
 
   const columns = groupLeadsByColumn(leadBoard.columns, leadBoard.leads);
 
@@ -31,7 +39,10 @@ export default async function CompanyLeadsPage({
             <div>
               <h1 className="text-2xl font-semibold text-white">{leadBoard.name}</h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-300">
-                {leadBoard.description || "Track qualified prospects and deal value by stage."}
+                {leadBoard.description ||
+                  (isOwner
+                    ? "Track qualified prospects and deal value by stage."
+                    : "Shared sales pipeline you have been invited to collaborate on.")}
               </p>
             </div>
           </div>

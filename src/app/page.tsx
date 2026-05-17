@@ -59,6 +59,7 @@ type BoardColumnOption = {
 type CompanyListItem = {
   id: string;
   name: string;
+  access: "OWNER" | "COLLABORATOR";
 };
 
 const themes = ["Slate", "Ocean", "Sunset", "Forest", "Carbon"];

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import {
   createLeadForUser,
   getLeadBoardForUser,
@@ -35,14 +36,25 @@ export async function POST(
   const { companyId } = await params;
 
   try {
-    const payload = await req.json();
+    const payload = await req.json().catch(() => null);
+    if (payload === null) {
+      return validationError("Invalid JSON payload.");
+    }
+
     const lead = await createLeadForUser({ userId, companyId, payload });
     if (!lead) {
       return notFound("Lead board or column not found.");
     }
 
     return NextResponse.json({ ok: true, data: lead }, { status: 201 });
-  } catch {
-    return validationError("Invalid lead payload.");
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return validationError(error.issues[0]?.message ?? "Invalid lead payload.");
+    }
+
+    return NextResponse.json(
+      { ok: false, error: { code: "INTERNAL_ERROR", message: "Unexpected server error." } },
+      { status: 500 }
+    );
   }
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, Building2, Settings } from "lucide-react";
+import { ArrowLeft, Building2, LayoutKanban, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type CompanyShellProps = {
@@ -14,17 +14,25 @@ type CompanyShellProps = {
     quotationPrefix: string;
     description: string;
   };
+  canManageSettings?: boolean;
   isOnboarding?: boolean;
 };
 
 export function CompanyShell({
   children,
   company,
+  canManageSettings = true,
   isOnboarding = false,
 }: CompanyShellProps) {
   const pathname = usePathname();
+  const leadsHref = `/company/${company.id}/leads`;
   const settingsHref = `/company/${company.id}/settings`;
-  const navItems = [{ href: settingsHref, label: "Settings", icon: Settings }];
+  const navItems = isOnboarding
+    ? [{ href: settingsHref, label: "Settings", icon: Settings }]
+    : [
+        { href: leadsHref, label: "Leads", icon: LayoutKanban },
+        ...(canManageSettings ? [{ href: settingsHref, label: "Settings", icon: Settings }] : []),
+      ];
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#1f2937_0%,#0f172a_35%,#020617_100%)] text-slate-100">
@@ -55,7 +63,7 @@ export function CompanyShell({
                   <p className="max-w-2xl text-sm text-slate-300">
                     {isOnboarding
                       ? "Set up the first company workspace and default sales pipeline."
-                      : company.description || "Company workspace settings and premium shell."}
+                      : company.description || "Company sales pipeline and workspace context."}
                   </p>
                 </div>
               </div>

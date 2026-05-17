@@ -3,10 +3,29 @@ import { prisma } from "@/lib/prisma";
 
 export async function listCompaniesForUser(userId: string) {
   return prisma.company.findMany({
-    where: { ownerId: userId },
-    select: { id: true, name: true, slug: true, quotationPrefix: true },
+    where: {
+      OR: [
+        { ownerId: userId },
+        {
+          leadBoards: {
+            some: {
+              members: {
+                some: { userId },
+              },
+            },
+          },
+        },
+      ],
+    },
+    select: { id: true, name: true, ownerId: true },
     orderBy: { createdAt: "asc" },
-  });
+  }).then((companies) =>
+    companies.map((company) => ({
+      id: company.id,
+      name: company.name,
+      access: company.ownerId === userId ? "OWNER" : ("COLLABORATOR" as const),
+    }))
+  );
 }
 
 export async function getCompanyForUser(userId: string, companyId: string) {

@@ -98,5 +98,5 @@ export default async function CompanyLayout({
     notFound();
   }
 
-  return <CompanyShell company={company}>{children}</CompanyShell>;
+  return <CompanyShell company={company} canManageSettings={company.ownerId === userId}>{children}</CompanyShell>;
 }

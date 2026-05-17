@@ -2,7 +2,7 @@ import Link from "next/link";
 
 type CompanySwitcherProps = {
   hasCompanyMode: boolean;
-  companies: { id: string; name: string }[];
+  companies: { id: string; name: string; access: "OWNER" | "COLLABORATOR" }[];
   onOpenLockedMode: () => void;
 };
 
@@ -11,6 +11,10 @@ export function CompanySwitcher({
   companies,
   onOpenLockedMode,
 }: CompanySwitcherProps) {
+  const visibleCompanies = hasCompanyMode
+    ? companies
+    : companies.filter((company) => company.access === "COLLABORATOR");
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Link
@@ -19,25 +23,35 @@ export function CompanySwitcher({
       >
         Personal
       </Link>
-      {hasCompanyMode ? (
+      {hasCompanyMode || visibleCompanies.length > 0 ? (
         <>
-          {companies.map((company) => (
+          {visibleCompanies.map((company) => (
             <Link
               key={company.id}
-              href={`/company/${company.id}/settings`}
+              href={
+                company.access === "OWNER"
+                  ? `/company/${company.id}/settings`
+                  : `/company/${company.id}/leads`
+              }
               className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:border-zinc-700 hover:bg-zinc-800"
-              title={`${company.name} settings`}
+              title={
+                company.access === "OWNER"
+                  ? `${company.name} settings`
+                  : `${company.name} lead board`
+              }
             >
-              {company.name} Settings
+              {company.name} {company.access === "OWNER" ? "Settings" : "Leads"}
             </Link>
           ))}
-          <Link
-            href="/company/new/settings"
-            className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:border-zinc-700 hover:bg-zinc-800"
-            title="Create another company"
-          >
-            Create Company
-          </Link>
+          {hasCompanyMode ? (
+            <Link
+              href="/company/new/settings"
+              className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:border-zinc-700 hover:bg-zinc-800"
+              title="Create another company"
+            >
+              Create Company
+            </Link>
+          ) : null}
         </>
       ) : (
         <button

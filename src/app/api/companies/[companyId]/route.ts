@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { forbidden, getSessionUserId, notFound, unauthorized } from "@/lib/api";
-import { canOpenCompanyShell } from "@/lib/company-auth";
+import { getCompanyForUser } from "@/lib/company-service";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
@@ -13,62 +13,20 @@ export async function GET(
   }
 
   const { companyId } = await params;
-  const [user, company, invitedMemberships] = await Promise.all([
+  const [user, company] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: { premiumUnlock: { select: { id: true } } },
     }),
-    prisma.company.findFirst({
-      where: {
-        id: companyId,
-        OR: [
-          { ownerId: userId },
-          {
-            leadBoards: {
-              some: {
-                members: {
-                  some: { userId },
-                },
-              },
-            },
-          },
-        ],
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        description: true,
-        businessType: true,
-        quotationPrefix: true,
-        createdAt: true,
-        updatedAt: true,
-        ownerId: true,
-      },
-    }),
-    prisma.companyLeadBoardMember.findMany({
-      where: {
-        userId,
-        leadBoard: {
-          companyId,
-        },
-      },
-      select: { leadBoardId: true },
-    }),
+    getCompanyForUser(userId, companyId),
   ]);
-
-  const allowed = canOpenCompanyShell({
-    isOwner: company?.ownerId === userId,
-    hasPremiumUnlock: Boolean(user?.premiumUnlock),
-    invitedLeadBoardIds: invitedMemberships.map((membership) => membership.leadBoardId),
-  });
-
-  if (!allowed && !user?.premiumUnlock) {
-    return forbidden("Company mode is locked.");
-  }
 
   if (!company) {
     return notFound("Company not found.");
+  }
+
+  if (!user?.premiumUnlock) {
+    return forbidden("Company mode is locked.");
   }
 
   return NextResponse.json({ ok: true, data: company });

@@ -19,17 +19,15 @@ export async function GET() {
   if (!userId) {
     return unauthorized();
   }
-
-  if (!(await hasCompanyMode(userId))) {
-    return forbidden("Company mode is locked.");
-  }
-
-  const companies = await listCompaniesForUser(userId);
+  const [companyMode, companies] = await Promise.all([
+    hasCompanyMode(userId),
+    listCompaniesForUser(userId),
+  ]);
 
   return NextResponse.json({
     ok: true,
     data: companies,
-    meta: { hasCompanyMode: true },
+    meta: { hasCompanyMode: companyMode },
   });
 }
 
