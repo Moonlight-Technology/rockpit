@@ -119,26 +119,27 @@ model User {
 }
 
 model Board {
-  id            String            @id @default(cuid())
-  title         String
-  description   String
-  theme         String
-  tags          String[]          @default([])
-  dueDate       DateTime?
-  closedAt      DateTime?
-  ownerId       String
-  workspaceType WorkspaceType     @default(PERSONAL)
-  companyId     String?
-  sourceLeadId  String?           @unique
-  owner         User              @relation("BoardOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  company       Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  sourceLead    CompanyLead?      @relation("BoardSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
-  members       BoardMember[]
-  columns       BoardColumn[]
-  tasks         Task[]
-  projectInfo   BoardProjectInfo?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  id                String       @id @default(cuid())
+  title             String
+  description       String
+  theme             String
+  tags              String[]     @default([])
+  dueDate           DateTime?
+  closedAt          DateTime?
+  ownerId           String
+  workspaceType     WorkspaceType @default(PERSONAL)
+  companyId         String?
+  sourceLeadId      String?      @unique
+  owner             User         @relation("BoardOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  company           Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  sourceLead        CompanyLead? @relation("BoardSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
+  convertedFromLead CompanyLead? @relation("CompanyLeadConvertedProjectBoard")
+  members           BoardMember[]
+  columns           BoardColumn[]
+  tasks             Task[]
+  projectInfo       BoardProjectInfo?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 }
 
 model UserPremiumUnlock {
@@ -222,7 +223,8 @@ model CompanyLead {
   column                  CompanyLeadColumn  @relation(fields: [columnId], references: [id], onDelete: Cascade)
   owner                   User               @relation("CompanyLeadOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   quotations              CompanyQuotation[]
-  convertedProjectBoard   Board?             @relation("BoardSourceLead")
+  sourceProjectBoard      Board?             @relation("BoardSourceLead")
+  convertedProjectBoard   Board?             @relation("CompanyLeadConvertedProjectBoard", fields: [convertedProjectBoardId], references: [id], onDelete: SetNull)
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
 }

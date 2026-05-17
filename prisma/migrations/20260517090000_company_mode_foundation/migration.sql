@@ -191,6 +191,9 @@ ALTER TABLE "public"."CompanyLead" ADD CONSTRAINT "CompanyLead_columnId_fkey" FO
 ALTER TABLE "public"."CompanyLead" ADD CONSTRAINT "CompanyLead_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "public"."CompanyLead" ADD CONSTRAINT "CompanyLead_convertedProjectBoardId_fkey" FOREIGN KEY ("convertedProjectBoardId") REFERENCES "public"."Board"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "public"."CompanyQuotation" ADD CONSTRAINT "CompanyQuotation_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "public"."Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
