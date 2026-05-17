@@ -3,6 +3,14 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
+function readHasCompanyMode(user: unknown) {
+  if (!user || typeof user !== "object" || !("hasCompanyMode" in user)) {
+    return false;
+  }
+
+  return Boolean(user.hasCompanyMode);
+}
+
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
@@ -58,17 +66,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.hasCompanyMode = Boolean(user.hasCompanyMode);
-      } else if (token.id) {
-        const currentUser = await prisma.user.findUnique({
-          where: { id: token.id as string },
-          select: {
-            premiumUnlock: {
-              select: { id: true },
-            },
-          },
-        });
-        token.hasCompanyMode = Boolean(currentUser?.premiumUnlock);
+        token.hasCompanyMode = readHasCompanyMode(user);
       }
       return token;
     },

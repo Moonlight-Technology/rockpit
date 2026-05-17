@@ -163,6 +163,25 @@ function getOverdueDays(dueDate: string) {
   return Math.floor(msDiff / 86_400_000);
 }
 
+async function fetchCompaniesState() {
+  try {
+    const response = await fetch("/api/companies", { cache: "no-store" });
+    const result = await response.json().catch(() => null);
+
+    if (response.ok && result?.ok) {
+      return {
+        companies: (result.data ?? []) as CompanyListItem[],
+        hasCompanyMode: Boolean(result.meta?.hasCompanyMode ?? true),
+      };
+    }
+  } catch {}
+
+  return {
+    companies: [] as CompanyListItem[],
+    hasCompanyMode: false,
+  };
+}
+
 export default function Home() {
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -225,26 +244,13 @@ export default function Home() {
   );
 
   useEffect(() => {
-    const fetchCompanies = async () => {
-      try {
-        const response = await fetch("/api/companies", { cache: "no-store" });
-        const result = await response.json().catch(() => null);
-
-        if (response.ok && result?.ok) {
-          setCompanies(result.data ?? []);
-          setHasCompanyMode(Boolean(result.meta?.hasCompanyMode ?? true));
-          return;
-        }
-
-        setCompanies([]);
-        setHasCompanyMode(false);
-      } catch {
-        setCompanies([]);
-        setHasCompanyMode(false);
-      }
+    const loadCompanies = async () => {
+      const nextState = await fetchCompaniesState();
+      setCompanies(nextState.companies);
+      setHasCompanyMode(nextState.hasCompanyMode);
     };
 
-    void fetchCompanies();
+    void loadCompanies();
   }, []);
 
   useEffect(() => {
@@ -556,17 +562,9 @@ export default function Home() {
   };
 
   const refreshCompanies = async () => {
-    const response = await fetch("/api/companies", { cache: "no-store" });
-    const result = await response.json().catch(() => null);
-
-    if (!response.ok || !result?.ok) {
-      setCompanies([]);
-      setHasCompanyMode(false);
-      return;
-    }
-
-    setCompanies(result.data ?? []);
-    setHasCompanyMode(Boolean(result.meta?.hasCompanyMode ?? true));
+    const nextState = await fetchCompaniesState();
+    setCompanies(nextState.companies);
+    setHasCompanyMode(nextState.hasCompanyMode);
   };
 
   return (
