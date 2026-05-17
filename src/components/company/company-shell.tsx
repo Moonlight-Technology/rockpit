@@ -39,9 +39,9 @@ export function CompanyShell({
       ];
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#1f2937_0%,#0f172a_35%,#020617_100%)] text-slate-100">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-6 md:px-8 md:py-8">
-        <header className="rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-2xl shadow-black/20 backdrop-blur md:p-6">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#1f2937_0%,#0f172a_35%,#020617_100%)] text-slate-100 print:min-h-0 print:bg-white print:text-slate-950">
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-6 md:px-8 md:py-8 print:min-h-0 print:max-w-none print:px-0 print:py-0">
+        <header className="rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-2xl shadow-black/20 backdrop-blur md:p-6 print:hidden">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-3">
               <Link
@@ -96,7 +96,7 @@ export function CompanyShell({
             </nav>
           </div>
         </header>
-        <main className="flex-1 py-6 md:py-8">{children}</main>
+        <main className="flex-1 py-6 md:py-8 print:py-0">{children}</main>
       </div>
     </div>
   );

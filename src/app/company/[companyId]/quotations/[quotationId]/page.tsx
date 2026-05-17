@@ -25,8 +25,8 @@ export default async function CompanyQuotationDetailPage({
   const { quotation, revisions } = result;
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-3xl border border-white/10 bg-white/6 p-6 text-slate-100 ring-1 ring-white/5">
+    <div className="space-y-6 print:space-y-0">
+      <section className="rounded-3xl border border-white/10 bg-white/6 p-6 text-slate-100 ring-1 ring-white/5 print:hidden">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
             <Link
@@ -58,8 +58,8 @@ export default async function CompanyQuotationDetailPage({
         </div>
       </section>
 
-      <section className="rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.92)_0%,rgba(248,250,252,1)_18%,rgba(255,255,255,1)_100%)] p-4 shadow-2xl shadow-black/20 sm:p-6">
-        <article className="mx-auto max-w-4xl rounded-[28px] bg-white p-6 text-slate-900 shadow-[0_24px_80px_rgba(15,23,42,0.22)] sm:p-10 print:shadow-none">
+      <section className="rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.92)_0%,rgba(248,250,252,1)_18%,rgba(255,255,255,1)_100%)] p-4 shadow-2xl shadow-black/20 sm:p-6 print:rounded-none print:border-0 print:bg-white print:p-0 print:shadow-none">
+        <article className="mx-auto max-w-4xl rounded-[28px] bg-white p-6 text-slate-900 shadow-[0_24px_80px_rgba(15,23,42,0.22)] sm:p-10 print:max-w-none print:rounded-none print:p-0 print:shadow-none">
           <div className="flex flex-col gap-6 border-b border-slate-200 pb-8 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.32em] text-slate-500">Quotation</p>
@@ -82,7 +82,7 @@ export default async function CompanyQuotationDetailPage({
               <div>
                 <dt className="text-xs uppercase tracking-[0.22em] text-slate-400">Issued</dt>
                 <dd className="mt-1 font-medium text-slate-950">
-                  {quotation.issuedAt ? format(new Date(quotation.issuedAt), "PPP") : "Draft"}
+                  {quotation.issuedAt ? format(new Date(quotation.issuedAt), "PPP") : "Not issued yet"}
                 </dd>
               </div>
             </dl>
@@ -149,7 +149,7 @@ export default async function CompanyQuotationDetailPage({
         </article>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] print:hidden">
         <QuotationEditor
           quotationId={quotation.id}
           leadId={quotation.lead.id}

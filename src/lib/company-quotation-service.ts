@@ -9,6 +9,7 @@ const RETRYABLE_QUOTATION_UNIQUES = [
   ["companyId", "quotationNumber", "revisionNumber"],
   ["leadId", "revisionNumber"],
 ] as const;
+const QUOTATION_STATUS_WITH_ISSUED_AT = new Set(["SENT", "APPROVED", "REJECTED"] as const);
 
 const quotationListInclude = {
   lead: {
@@ -65,6 +66,55 @@ export function formatQuotationNumber(input: {
 
 export function nextRevisionNumber(items: Array<{ revisionNumber: number }>) {
   return items.length === 0 ? 1 : Math.max(...items.map((item) => item.revisionNumber)) + 1;
+}
+
+function quotationMonthKey(date: Date) {
+  return format(date, "yyyy/MM");
+}
+
+function parseQuotationSequence(input: { prefix: string; quotationNumber: string; monthKey: string }) {
+  const match = input.quotationNumber.match(/^(.+)\/QT\/(\d{4}\/\d{2})\/(\d+)$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, prefix, monthKey, sequence] = match;
+  if (prefix !== input.prefix || monthKey !== input.monthKey) {
+    return null;
+  }
+
+  const value = Number(sequence);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+export function nextQuotationSequence(input: {
+  prefix: string;
+  issuedAt: Date;
+  existingQuotationNumbers: string[];
+}) {
+  const monthKey = quotationMonthKey(input.issuedAt);
+  let maxSequence = 0;
+
+  for (const quotationNumber of input.existingQuotationNumbers) {
+    const sequence = parseQuotationSequence({
+      prefix: input.prefix,
+      quotationNumber,
+      monthKey,
+    });
+
+    if (sequence && sequence > maxSequence) {
+      maxSequence = sequence;
+    }
+  }
+
+  return maxSequence + 1;
+}
+
+export function getIssuedAtForQuotationStatus(
+  status: "DRAFT" | "SENT" | "APPROVED" | "REJECTED",
+  now: Date
+) {
+  return QUOTATION_STATUS_WITH_ISSUED_AT.has(status) ? now : null;
 }
 
 function normalizeErrorTarget(target: unknown) {
@@ -237,31 +287,32 @@ export async function createQuotationForUser(input: {
       let quotationNumber = existingRevisions[0]?.quotationNumber;
 
       if (!quotationNumber) {
-        const latestSeries = await tx.companyQuotation.findFirst({
+        const monthPattern = `${context.company.quotationPrefix}/QT/${quotationMonthKey(issuedAt)}/`;
+        const monthlySeries = await tx.companyQuotation.findMany({
           where: {
             companyId: context.company.id,
             revisionNumber: 1,
+            quotationNumber: {
+              startsWith: monthPattern,
+            },
           },
-          orderBy: [
-            { issuedAt: "desc" },
-            { quotationNumber: "desc" },
-          ],
-          select: {
-            quotationNumber: true,
-          },
+          select: { quotationNumber: true },
         });
-
-        const currentSequence = latestSeries?.quotationNumber.match(/\/(\d{3,})$/)?.[1];
-        const nextSequence = currentSequence ? Number(currentSequence) + 1 : 1;
 
         quotationNumber = formatQuotationNumber({
           prefix: context.company.quotationPrefix,
           issuedAt,
-          sequence: nextSequence,
+          sequence: nextQuotationSequence({
+            prefix: context.company.quotationPrefix,
+            issuedAt,
+            existingQuotationNumbers: monthlySeries.map((item) => item.quotationNumber),
+          }),
         });
       }
 
       const subtotal = sumQuotationLines(parsed.lines);
+      const status = parsed.status;
+      const issuedQuotationAt = getIssuedAtForQuotationStatus(status, issuedAt);
 
       const quotation = await tx.companyQuotation.create({
         data: {
@@ -269,10 +320,10 @@ export async function createQuotationForUser(input: {
           leadId: lead.id,
           quotationNumber,
           revisionNumber,
-          status: parsed.status,
+          status,
           subtotal,
           total: subtotal,
-          issuedAt,
+          issuedAt: issuedQuotationAt,
           createdByUserId: input.userId,
           lines: {
             create: parsed.lines.map((line, index) => ({
@@ -338,6 +389,9 @@ export async function createQuotationRevisionForUser(input: {
       });
 
       const subtotal = sumQuotationLines(parsed.lines);
+      const issuedAt = new Date();
+      const status = parsed.status;
+      const issuedQuotationAt = getIssuedAtForQuotationStatus(status, issuedAt);
 
       const quotation = await tx.companyQuotation.create({
         data: {
@@ -345,10 +399,10 @@ export async function createQuotationRevisionForUser(input: {
           leadId: sourceQuotation.leadId,
           quotationNumber: sourceQuotation.quotationNumber,
           revisionNumber: nextRevisionNumber(latestRevision ? [latestRevision] : []),
-          status: parsed.status,
+          status,
           subtotal,
           total: subtotal,
-          issuedAt: new Date(),
+          issuedAt: issuedQuotationAt,
           createdByUserId: input.userId,
           lines: {
             create: parsed.lines.map((line, index) => ({

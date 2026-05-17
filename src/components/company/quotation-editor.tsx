@@ -38,15 +38,21 @@ export function QuotationEditor({
   const params = useParams<{ companyId: string }>();
   const companyId = params.companyId;
   const [isPending, startTransition] = useTransition();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<QuotationStatus>(initialStatus);
   const [lines, setLines] = useState(() => (initialLines?.length ? initialLines : [emptyLine]));
   const [error, setError] = useState<string | null>(null);
+  const isBusy = isSubmitting || isPending;
 
   const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isBusy) {
+      return;
+    }
     setError(null);
+    setIsSubmitting(true);
 
     const endpoint = quotationId
       ? `/api/companies/${companyId}/quotations/${quotationId}`
@@ -65,6 +71,7 @@ export function QuotationEditor({
 
     if (!response.ok || !result?.ok) {
       setError(result?.error?.message ?? "Unable to save quotation.");
+      setIsSubmitting(false);
       return;
     }
 
@@ -89,6 +96,7 @@ export function QuotationEditor({
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value as QuotationStatus)}
+            disabled={isBusy}
             className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none"
           >
             <option value="DRAFT">Draft</option>
@@ -111,6 +119,7 @@ export function QuotationEditor({
               </span>
               <input
                 value={line.description}
+                disabled={isBusy}
                 onChange={(event) =>
                   setLines((current) =>
                     current.map((item, itemIndex) =>
@@ -129,6 +138,7 @@ export function QuotationEditor({
                 type="number"
                 min={1}
                 value={line.quantity}
+                disabled={isBusy}
                 onChange={(event) =>
                   setLines((current) =>
                     current.map((item, itemIndex) =>
@@ -150,6 +160,7 @@ export function QuotationEditor({
                 type="number"
                 min={0}
                 value={line.unitPrice}
+                disabled={isBusy}
                 onChange={(event) =>
                   setLines((current) =>
                     current.map((item, itemIndex) =>
@@ -169,10 +180,15 @@ export function QuotationEditor({
               </div>
               <button
                 type="button"
+                disabled={isBusy}
                 onClick={() =>
-                  setLines((current) => (current.length === 1 ? current : current.filter((_, itemIndex) => itemIndex !== index)))
+                  setLines((current) =>
+                    current.length === 1
+                      ? current
+                      : current.filter((_, itemIndex) => itemIndex !== index)
+                  )
                 }
-                className="rounded-xl border border-rose-300/20 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-400/10"
+                className="rounded-xl border border-rose-300/20 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-400/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Remove
               </button>
@@ -184,8 +200,9 @@ export function QuotationEditor({
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
+          disabled={isBusy}
           onClick={() => setLines((current) => [...current, emptyLine])}
-          className="rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10"
+          className="rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Add line
         </button>
@@ -198,10 +215,10 @@ export function QuotationEditor({
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isBusy}
           className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-200 disabled:opacity-60"
         >
-          {submitLabel}
+          {isBusy ? "Saving..." : submitLabel}
         </button>
         {error ? <p className="text-sm text-rose-300">{error}</p> : null}
       </div>

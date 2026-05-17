@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, Plus } from "lucide-react";
+import { ArrowRight, FileText, Plus } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { QuotationEditor } from "@/components/company/quotation-editor";
 import { getSessionUserId } from "@/lib/api";
@@ -27,6 +27,20 @@ export default async function CompanyQuotationsPage({
       latestByLead.set(quotation.lead.id, quotation);
     }
   }
+  const leadsWithoutSeries = result.leads.filter((lead) => !latestByLead.has(lead.id));
+  const leadsWithSeries = result.leads
+    .map((lead) => ({
+      lead,
+      quotation: latestByLead.get(lead.id),
+    }))
+    .filter(
+      (
+        item
+      ): item is {
+        lead: (typeof result.leads)[number];
+        quotation: (typeof result.quotations)[number];
+      } => Boolean(item.quotation)
+    );
 
   return (
     <div className="space-y-6">
@@ -44,8 +58,10 @@ export default async function CompanyQuotationsPage({
           </div>
           <div className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Leads ready</p>
-              <p className="mt-1 text-lg font-semibold text-white">{result.leads.length}</p>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                Leads without series
+              </p>
+              <p className="mt-1 text-lg font-semibold text-white">{leadsWithoutSeries.length}</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
               <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
@@ -62,9 +78,9 @@ export default async function CompanyQuotationsPage({
           <section className="rounded-3xl border border-white/10 bg-white/6 p-5 text-slate-100 ring-1 ring-white/5">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-white">Latest quotation per lead</h2>
+                <h2 className="text-lg font-semibold text-white">Existing quotation series</h2>
                 <p className="mt-1 text-sm text-slate-400">
-                  Open a detail page to print, inspect totals, or create a revision.
+                  Open the current revision to print, inspect totals, or create the next revision.
                 </p>
               </div>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.22em] text-slate-300">
@@ -97,6 +113,10 @@ export default async function CompanyQuotationsPage({
                       <span>{quotation.lead.title}</span>
                       <span>Rp{quotation.total.toLocaleString("id-ID")}</span>
                       <span>{quotation.lines.length} line item{quotation.lines.length === 1 ? "" : "s"}</span>
+                      <span className="inline-flex items-center gap-1 text-cyan-100">
+                        Open current series
+                        <ArrowRight className="size-4" />
+                      </span>
                     </div>
                   </Link>
                 ))
@@ -110,8 +130,8 @@ export default async function CompanyQuotationsPage({
         </div>
 
         <div className="space-y-4">
-          {result.leads.length > 0 ? (
-            result.leads.map((lead) => (
+          {leadsWithoutSeries.length > 0 ? (
+            leadsWithoutSeries.map((lead) => (
               <section
                 key={lead.id}
                 className="rounded-3xl border border-white/10 bg-white/6 p-5 text-slate-100 ring-1 ring-white/5"
@@ -150,14 +170,43 @@ export default async function CompanyQuotationsPage({
                   <Plus className="size-4" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-white">No leads yet</h2>
+                  <h2 className="text-lg font-semibold text-white">No fresh quotation starts</h2>
                   <p className="mt-1 text-sm text-slate-400">
-                    Add a lead first before starting a quotation series.
+                    Every lead already has a quotation series. Open an existing series to create a revision.
                   </p>
                 </div>
               </div>
             </section>
           )}
+
+          {leadsWithSeries.length > 0 ? (
+            <section className="rounded-3xl border border-white/10 bg-white/6 p-5 text-slate-100 ring-1 ring-white/5">
+              <h2 className="text-lg font-semibold text-white">Leads already in quotation flow</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                These leads already have an active series. Revisions should be created from the latest detail page.
+              </p>
+              <div className="mt-4 space-y-3">
+                {leadsWithSeries.map(({ lead, quotation }) => (
+                  <Link
+                    key={lead.id}
+                    href={`/company/${companyId}/quotations/${quotation.id}`}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/10 p-4 transition hover:border-cyan-300/30 hover:bg-cyan-300/5"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-white">{lead.prospectName}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
+                        {quotation.quotationNumber} · Rev {quotation.revisionNumber}
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-sm text-cyan-100">
+                      Continue
+                      <ArrowRight className="size-4" />
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       </section>
     </div>
