@@ -24,11 +24,11 @@ export default async function CompanyLayout({
 
   const hasPremiumUnlock = Boolean(user?.premiumUnlock);
 
-  if (!hasPremiumUnlock) {
-    redirect("/");
-  }
-
   if (companyId === "new") {
+    if (!hasPremiumUnlock) {
+      redirect("/");
+    }
+
     return (
       <CompanyShell
         isOnboarding
@@ -91,6 +91,10 @@ export default async function CompanyLayout({
   });
 
   if (!allowed) {
+    if (company?.ownerId === userId && !hasPremiumUnlock) {
+      redirect("/");
+    }
+
     notFound();
   }
 
