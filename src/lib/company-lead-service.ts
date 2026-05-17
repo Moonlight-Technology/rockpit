@@ -141,9 +141,6 @@ export async function updateLeadForUser(input: {
   if (parsed.notes !== undefined) {
     data.notes = parsed.notes;
   }
-  if (parsed.stage !== undefined) {
-    data.stage = CompanyLeadStage[parsed.stage];
-  }
   if (parsed.columnId !== undefined) {
     const column = lead.leadBoard.columns.find((item) => item.id === parsed.columnId);
     if (!column) {
@@ -157,32 +154,6 @@ export async function updateLeadForUser(input: {
     where: { id: input.leadId },
     data,
   });
-}
-
-export async function deleteLeadForUser(input: {
-  userId: string;
-  companyId: string;
-  leadId: string;
-}) {
-  const lead = await prisma.companyLead.findFirst({
-    where: {
-      id: input.leadId,
-      companyId: input.companyId,
-      leadBoard: {
-        OR: [{ company: { ownerId: input.userId } }, { members: { some: { userId: input.userId } } }],
-      },
-    },
-    select: { id: true },
-  });
-  if (!lead) {
-    return null;
-  }
-
-  await prisma.companyLead.delete({
-    where: { id: input.leadId },
-  });
-
-  return { id: input.leadId };
 }
 
 export async function addLeadBoardMemberByEmail(input: {
