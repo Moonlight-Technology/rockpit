@@ -4,12 +4,42 @@ import { prisma } from "@/lib/prisma";
 const defaultColumns = ["To Do", "In Progress", "Done"];
 const DONE_COLUMN_TITLE = "done";
 
+type CreateBoardWithDefaultsInput = {
+  tx: Prisma.TransactionClient;
+  userId: string;
+  board: Prisma.BoardUncheckedCreateInput;
+};
+
 function isDoneColumnTitle(title: string) {
   return title.trim().toLowerCase() === DONE_COLUMN_TITLE;
 }
 
 function normalizeAssigneeIds(assigneeIds?: (string | null | undefined)[]) {
   return Array.from(new Set((assigneeIds ?? []).filter(Boolean) as string[])).slice(0, 20);
+}
+
+async function createBoardWithDefaults(input: CreateBoardWithDefaultsInput) {
+  const board = await input.tx.board.create({
+    data: input.board,
+  });
+
+  await input.tx.boardMember.create({
+    data: {
+      boardId: board.id,
+      userId: input.userId,
+      role: BoardRole.OWNER,
+    },
+  });
+
+  await input.tx.boardColumn.createMany({
+    data: defaultColumns.map((title, position) => ({
+      boardId: board.id,
+      title,
+      position,
+    })),
+  });
+
+  return board;
 }
 
 const boardDetailInclude = {
@@ -91,8 +121,10 @@ export async function createBoardForUser(input: {
   ).slice(0, 10);
 
   return prisma.$transaction(async (tx) => {
-    const board = await tx.board.create({
-      data: {
+    return createBoardWithDefaults({
+      tx,
+      userId: input.userId,
+      board: {
         title: input.title,
         description: input.description,
         theme: input.theme,
@@ -101,24 +133,6 @@ export async function createBoardForUser(input: {
         ownerId: input.userId,
       },
     });
-
-    await tx.boardMember.create({
-      data: {
-        boardId: board.id,
-        userId: input.userId,
-        role: BoardRole.OWNER,
-      },
-    });
-
-    await tx.boardColumn.createMany({
-      data: defaultColumns.map((title, idx) => ({
-        boardId: board.id,
-        title,
-        position: idx,
-      })),
-    });
-
-    return board;
   });
 }
 
@@ -130,9 +144,11 @@ export async function createCompanyProjectBoard(input: {
   title: string;
   description: string;
 }) {
-  const createBoard = async (tx: Prisma.TransactionClient) => {
-    const board = await tx.board.create({
-      data: {
+  const createBoard = async (tx: Prisma.TransactionClient) =>
+    createBoardWithDefaults({
+      tx,
+      userId: input.userId,
+      board: {
         title: input.title,
         description: input.description,
         theme: "Carbon",
@@ -143,25 +159,6 @@ export async function createCompanyProjectBoard(input: {
         sourceLeadId: input.sourceLeadId,
       },
     });
-
-    await tx.boardMember.create({
-      data: {
-        boardId: board.id,
-        userId: input.userId,
-        role: BoardRole.OWNER,
-      },
-    });
-
-    await tx.boardColumn.createMany({
-      data: defaultColumns.map((title, index) => ({
-        boardId: board.id,
-        title,
-        position: index,
-      })),
-    });
-
-    return board;
-  };
 
   if (input.tx) {
     return createBoard(input.tx);
