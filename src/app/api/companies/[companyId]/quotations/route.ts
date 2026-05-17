@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import { getSessionUserId, forbidden, notFound, unauthorized, validationError } from "@/lib/api";
 import {
   createQuotationForUser,
+  isQuotationConflictError,
   listQuotationsForUser,
 } from "@/lib/company-quotation-service";
 
@@ -56,6 +57,18 @@ export async function POST(
   } catch (error) {
     if (error instanceof ZodError) {
       return validationError(error.issues[0]?.message ?? "Invalid quotation payload.");
+    }
+    if (isQuotationConflictError(error)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: "Quotation number allocation conflicted with another request. Please retry.",
+          },
+        },
+        { status: 409 }
+      );
     }
 
     return NextResponse.json(

@@ -4,6 +4,7 @@ import { getSessionUserId, forbidden, notFound, unauthorized, validationError } 
 import {
   createQuotationRevisionForUser,
   getQuotationDetailForUser,
+  isQuotationConflictError,
 } from "@/lib/company-quotation-service";
 
 export async function GET(
@@ -64,6 +65,18 @@ export async function POST(
   } catch (error) {
     if (error instanceof ZodError) {
       return validationError(error.issues[0]?.message ?? "Invalid quotation payload.");
+    }
+    if (isQuotationConflictError(error)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: "Quotation revision allocation conflicted with another request. Please retry.",
+          },
+        },
+        { status: 409 }
+      );
     }
 
     return NextResponse.json(
