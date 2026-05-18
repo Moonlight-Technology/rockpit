@@ -7,22 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
+type LeadCard = {
+  id: string;
+  title: string;
+  prospectName: string;
+  estimatedValue: number;
+  stage: string;
+  convertedProjectBoardId?: string | null;
+};
+
+type LeadColumn = {
+  id: string;
+  title: string;
+  totalEstimatedValue: number;
+  leads: LeadCard[];
+};
+
 type LeadBoardProps = {
   companyId: string;
   canManage: boolean;
   collaboratorCount: number;
-  columns: Array<{
-    id: string;
-    title: string;
-    totalEstimatedValue: number;
-    leads: Array<{
-      id: string;
-      title: string;
-      prospectName: string;
-      estimatedValue: number;
-      stage: string;
-    }>;
-  }>;
+  columns: LeadColumn[];
   clients: Array<{
     id: string;
     name: string;
@@ -30,6 +35,63 @@ type LeadBoardProps = {
     email: string;
   }>;
 };
+
+const LEAD_DRAG_MIME = "application/x-rockpit-lead";
+
+function stageFromColumnTitle(title: string) {
+  switch (title.trim().toLowerCase()) {
+    case "new":
+      return "NEW";
+    case "qualified":
+      return "QUALIFIED";
+    case "proposal":
+      return "PROPOSAL";
+    case "negotiation":
+      return "NEGOTIATION";
+    case "won":
+      return "WON";
+    case "lost":
+      return "LOST";
+    default:
+      return "NEW";
+  }
+}
+
+function moveLeadBetweenColumns(
+  columns: LeadColumn[],
+  leadId: string,
+  sourceColumnId: string,
+  targetColumnId: string
+): LeadColumn[] | null {
+  if (sourceColumnId === targetColumnId) return null;
+  const source = columns.find((column) => column.id === sourceColumnId);
+  const target = columns.find((column) => column.id === targetColumnId);
+  if (!source || !target) return null;
+  const lead = source.leads.find((item) => item.id === leadId);
+  if (!lead) return null;
+
+  const movedLead: LeadCard = { ...lead, stage: stageFromColumnTitle(target.title) };
+
+  return columns.map((column) => {
+    if (column.id === sourceColumnId) {
+      const leads = column.leads.filter((item) => item.id !== leadId);
+      return {
+        ...column,
+        leads,
+        totalEstimatedValue: leads.reduce((sum, item) => sum + item.estimatedValue, 0),
+      };
+    }
+    if (column.id === targetColumnId) {
+      const leads = [...column.leads, movedLead];
+      return {
+        ...column,
+        leads,
+        totalEstimatedValue: leads.reduce((sum, item) => sum + item.estimatedValue, 0),
+      };
+    }
+    return column;
+  });
+}
 
 const initialLeadForm = {
   title: "",
@@ -58,6 +120,15 @@ export function LeadBoard({
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [leadSuccess, setLeadSuccess] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [localColumns, setLocalColumns] = useState<LeadColumn[]>(columns);
+  const [columnsSource, setColumnsSource] = useState(columns);
+  const [draggingLeadId, setDraggingLeadId] = useState<string | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = useState<string | null>(null);
+
+  if (columnsSource !== columns) {
+    setColumnsSource(columns);
+    setLocalColumns(columns);
+  }
   const normalizedEstimatedValue = Number(leadForm.estimatedValue);
   const isLeadFormValid =
     leadForm.title.trim().length > 0 &&
@@ -120,6 +191,92 @@ export function LeadBoard({
     setInviteEmail("");
     setInviteSuccess("Collaborator invited.");
     startTransition(() => router.refresh());
+  }
+
+  async function moveLeadToColumn(
+    leadId: string,
+    sourceColumnId: string,
+    targetColumnId: string
+  ) {
+    if (!canManage || sourceColumnId === targetColumnId) return;
+
+    const snapshot = localColumns;
+    const optimistic = moveLeadBetweenColumns(
+      localColumns,
+      leadId,
+      sourceColumnId,
+      targetColumnId
+    );
+    if (!optimistic) return;
+
+    setLeadError(null);
+    setLocalColumns(optimistic);
+
+    try {
+      const response = await fetch(
+        `/api/companies/${companyId}/leads/${leadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ columnId: targetColumnId }),
+        }
+      );
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.ok) {
+        setLocalColumns(snapshot);
+        setLeadError(result?.error?.message ?? "Unable to move lead.");
+        return;
+      }
+
+      startTransition(() => router.refresh());
+    } catch {
+      setLocalColumns(snapshot);
+      setLeadError("Network error while moving lead.");
+    }
+  }
+
+  function handleLeadDragStart(
+    event: React.DragEvent<HTMLElement>,
+    lead: LeadCard,
+    columnId: string
+  ) {
+    if (!canManage) return;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(LEAD_DRAG_MIME, lead.id);
+    event.dataTransfer.setData("text/source-column-id", columnId);
+    setDraggingLeadId(lead.id);
+  }
+
+  function handleLeadDragEnd() {
+    setDraggingLeadId(null);
+    setDragOverColumnId(null);
+  }
+
+  function handleColumnDragOver(event: React.DragEvent<HTMLElement>, columnId: string) {
+    if (!canManage || !draggingLeadId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dragOverColumnId !== columnId) {
+      setDragOverColumnId(columnId);
+    }
+  }
+
+  function handleColumnDragLeave(columnId: string) {
+    if (dragOverColumnId === columnId) {
+      setDragOverColumnId(null);
+    }
+  }
+
+  function handleColumnDrop(event: React.DragEvent<HTMLElement>, targetColumnId: string) {
+    if (!canManage) return;
+    event.preventDefault();
+    const leadId = event.dataTransfer.getData(LEAD_DRAG_MIME);
+    const sourceColumnId = event.dataTransfer.getData("text/source-column-id");
+    setDraggingLeadId(null);
+    setDragOverColumnId(null);
+    if (!leadId || !sourceColumnId) return;
+    void moveLeadToColumn(leadId, sourceColumnId, targetColumnId);
   }
 
   return (
@@ -302,47 +459,71 @@ export function LeadBoard({
         </Card>
       </section>
 
+      {leadError ? (
+        <p className="text-sm text-rose-300" role="alert">
+          {leadError}
+        </p>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-3 2xl:grid-cols-6">
-        {columns.map((column) => (
-          <Card
-            key={column.id}
-            className="border-border bg-card text-card-foreground"
-          >
-            <CardHeader className="border-b border-border">
-              <div className="flex items-center justify-between gap-3">
-              <div>
-                <CardTitle className="text-sm text-card-foreground">{column.title}</CardTitle>
-                <CardDescription className="mt-1 text-xs text-muted-foreground">
-                  {column.leads.length} lead{column.leads.length === 1 ? "" : "s"}
-                </CardDescription>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                Rp{column.totalEstimatedValue.toLocaleString("id-ID")}
-              </span>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {column.leads.map((lead) => (
-                <article
-                  key={lead.id}
-                  className="rounded-xl border border-border bg-muted/40 p-3 shadow-none"
-                >
-                  <p className="text-sm font-medium text-card-foreground">{lead.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{lead.prospectName}</p>
-                  <div className="mt-3 flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    <span>{lead.stage}</span>
-                    <span>Rp{lead.estimatedValue.toLocaleString("id-ID")}</span>
+        {localColumns.map((column) => {
+          const isDropTarget =
+            canManage && draggingLeadId !== null && dragOverColumnId === column.id;
+          return (
+            <Card
+              key={column.id}
+              className={`border-border bg-card text-card-foreground transition ${
+                isDropTarget ? "ring-2 ring-primary/40" : ""
+              }`}
+              onDragOver={(event) => handleColumnDragOver(event, column.id)}
+              onDragLeave={() => handleColumnDragLeave(column.id)}
+              onDrop={(event) => handleColumnDrop(event, column.id)}
+            >
+              <CardHeader className="border-b border-border">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-sm text-card-foreground">{column.title}</CardTitle>
+                    <CardDescription className="mt-1 text-xs text-muted-foreground">
+                      {column.leads.length} lead{column.leads.length === 1 ? "" : "s"}
+                    </CardDescription>
                   </div>
-                </article>
-              ))}
-              {column.leads.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
-                  No leads in this stage yet.
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
-        ))}
+                  <span className="text-xs text-muted-foreground">
+                    Rp{column.totalEstimatedValue.toLocaleString("id-ID")}
+                  </span>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {column.leads.map((lead) => {
+                  const isLocked = Boolean(lead.convertedProjectBoardId);
+                  const isDraggable = canManage && !isLocked;
+                  const isDragging = draggingLeadId === lead.id;
+                  return (
+                    <article
+                      key={lead.id}
+                      draggable={isDraggable}
+                      onDragStart={(event) => handleLeadDragStart(event, lead, column.id)}
+                      onDragEnd={handleLeadDragEnd}
+                      className={`rounded-xl border border-border bg-muted/40 p-3 shadow-none ${
+                        isDraggable ? "cursor-grab active:cursor-grabbing" : ""
+                      } ${isDragging ? "opacity-60" : ""}`}
+                    >
+                      <p className="text-sm font-medium text-card-foreground">{lead.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{lead.prospectName}</p>
+                      <div className="mt-3 flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                        <span>{lead.stage}</span>
+                        <span>Rp{lead.estimatedValue.toLocaleString("id-ID")}</span>
+                      </div>
+                    </article>
+                  );
+                })}
+                {column.leads.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
+                    No leads in this stage yet.
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
