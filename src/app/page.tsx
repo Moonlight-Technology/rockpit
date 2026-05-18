@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { format } from "date-fns";
 import { Plus, PlaneTakeoff, CalendarDays, Menu, WalletCards } from "lucide-react";
+import { CompanyModeMenu } from "@/components/company/company-mode-menu";
+import { CompanyUnlockDialog } from "@/components/company/company-unlock-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -52,6 +54,12 @@ type BoardListItem = {
 type BoardColumnOption = {
   id: string;
   title: string;
+};
+
+type CompanyListItem = {
+  id: string;
+  name: string;
+  access: "OWNER" | "COLLABORATOR";
 };
 
 const themes = ["Slate", "Ocean", "Sunset", "Forest", "Carbon"];
@@ -156,6 +164,25 @@ function getOverdueDays(dueDate: string) {
   return Math.floor(msDiff / 86_400_000);
 }
 
+async function fetchCompaniesState() {
+  try {
+    const response = await fetch("/api/companies", { cache: "no-store" });
+    const result = await response.json().catch(() => null);
+
+    if (response.ok && result?.ok) {
+      return {
+        companies: (result.data ?? []) as CompanyListItem[],
+        hasCompanyMode: Boolean(result.meta?.hasCompanyMode ?? true),
+      };
+    }
+  } catch {}
+
+  return {
+    companies: [] as CompanyListItem[],
+    hasCompanyMode: false,
+  };
+}
+
 export default function Home() {
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -163,6 +190,9 @@ export default function Home() {
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("board");
   const [boards, setBoards] = useState<BoardListItem[]>([]);
   const [boardsLoading, setBoardsLoading] = useState(true);
+  const [companies, setCompanies] = useState<CompanyListItem[]>([]);
+  const [hasCompanyMode, setHasCompanyMode] = useState(false);
+  const [showCompanyUnlockDialog, setShowCompanyUnlockDialog] = useState(false);
 
   const [showBoardModal, setShowBoardModal] = useState(false);
   const [showBoardDueDatePicker, setShowBoardDueDatePicker] = useState(false);
@@ -203,7 +233,6 @@ export default function Home() {
     [tasks]
   );
   const previewTasks = openTasks.slice(0, 4);
-
   const doneCount = useMemo(
     () => tasks.filter((task) => task.status === "DONE").length,
     [tasks]
@@ -213,6 +242,16 @@ export default function Home() {
     () => tasks.filter((task) => task.dueDate).map((task) => new Date(task.dueDate as string)),
     [tasks]
   );
+
+  useEffect(() => {
+    const loadCompanies = async () => {
+      const nextState = await fetchCompaniesState();
+      setCompanies(nextState.companies);
+      setHasCompanyMode(nextState.hasCompanyMode);
+    };
+
+    void loadCompanies();
+  }, []);
 
   useEffect(() => {
     const fetchBoards = async () => {
@@ -522,6 +561,12 @@ export default function Home() {
     await refreshMyTasks();
   };
 
+  const refreshCompanies = async () => {
+    const nextState = await fetchCompaniesState();
+    setCompanies(nextState.companies);
+    setHasCompanyMode(nextState.hasCompanyMode);
+  };
+
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f9fafc_0%,#f3f5fa_48%,#eef2f9_100%)]">
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
@@ -539,6 +584,11 @@ export default function Home() {
           </div>
           <div className="hidden items-center gap-2 md:flex">
             <PwaInstallButton />
+            <CompanyModeMenu
+              hasCompanyMode={hasCompanyMode}
+              companies={companies}
+              onOpenLockedMode={() => setShowCompanyUnlockDialog(true)}
+            />
             <Button
               size="sm"
               variant="outline"
@@ -590,6 +640,13 @@ export default function Home() {
               <Card className="absolute right-0 top-11 z-40 w-64 shadow-lg">
                 <CardContent className="flex flex-col gap-1 p-2">
                   <PwaInstallButton />
+                  <CompanyModeMenu
+                    mobile
+                    hasCompanyMode={hasCompanyMode}
+                    companies={companies}
+                    onOpenLockedMode={() => setShowCompanyUnlockDialog(true)}
+                    onNavigate={() => setShowMobileMenu(false)}
+                  />
                   <Button
                     size="sm"
                     variant="ghost"
@@ -844,6 +901,12 @@ export default function Home() {
           </Card>
         </section>
       </main>
+
+      <CompanyUnlockDialog
+        open={showCompanyUnlockDialog}
+        onClose={() => setShowCompanyUnlockDialog(false)}
+        onUnlocked={refreshCompanies}
+      />
 
       {showBoardModal ? (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/35 p-4">

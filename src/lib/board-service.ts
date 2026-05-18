@@ -1,8 +1,14 @@
-import { BoardRole, Prisma, TaskPriority } from "@prisma/client";
+import { BoardRole, Prisma, TaskPriority, WorkspaceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const defaultColumns = ["To Do", "In Progress", "Done"];
 const DONE_COLUMN_TITLE = "done";
+
+type CreateBoardWithDefaultsInput = {
+  tx: Prisma.TransactionClient;
+  userId: string;
+  board: Prisma.BoardUncheckedCreateInput;
+};
 
 function isDoneColumnTitle(title: string) {
   return title.trim().toLowerCase() === DONE_COLUMN_TITLE;
@@ -10,6 +16,30 @@ function isDoneColumnTitle(title: string) {
 
 function normalizeAssigneeIds(assigneeIds?: (string | null | undefined)[]) {
   return Array.from(new Set((assigneeIds ?? []).filter(Boolean) as string[])).slice(0, 20);
+}
+
+async function createBoardWithDefaults(input: CreateBoardWithDefaultsInput) {
+  const board = await input.tx.board.create({
+    data: input.board,
+  });
+
+  await input.tx.boardMember.create({
+    data: {
+      boardId: board.id,
+      userId: input.userId,
+      role: BoardRole.OWNER,
+    },
+  });
+
+  await input.tx.boardColumn.createMany({
+    data: defaultColumns.map((title, position) => ({
+      boardId: board.id,
+      title,
+      position,
+    })),
+  });
+
+  return board;
 }
 
 const boardDetailInclude = {
@@ -50,6 +80,7 @@ export async function listBoardsForUser(
   const boards = await prisma.board.findMany({
     where: {
       ...(includeClosed ? {} : { closedAt: null }),
+      workspaceType: { not: WorkspaceType.COMPANY },
       OR: [{ ownerId: userId }, { members: { some: { userId } } }],
     },
     include: {
@@ -91,8 +122,10 @@ export async function createBoardForUser(input: {
   ).slice(0, 10);
 
   return prisma.$transaction(async (tx) => {
-    const board = await tx.board.create({
-      data: {
+    return createBoardWithDefaults({
+      tx,
+      userId: input.userId,
+      board: {
         title: input.title,
         description: input.description,
         theme: input.theme,
@@ -101,25 +134,82 @@ export async function createBoardForUser(input: {
         ownerId: input.userId,
       },
     });
+  });
+}
 
-    await tx.boardMember.create({
-      data: {
-        boardId: board.id,
-        userId: input.userId,
-        role: BoardRole.OWNER,
+export async function createCompanyProjectBoard(input: {
+  tx?: Prisma.TransactionClient;
+  userId: string;
+  companyId: string;
+  sourceLeadId: string;
+  title: string;
+  description: string;
+}) {
+  const createBoard = async (tx: Prisma.TransactionClient) =>
+    createBoardWithDefaults({
+      tx,
+      userId: input.userId,
+      board: {
+        title: input.title,
+        description: input.description,
+        theme: "Carbon",
+        tags: ["company"],
+        ownerId: input.userId,
+        workspaceType: WorkspaceType.COMPANY,
+        companyId: input.companyId,
+        sourceLeadId: input.sourceLeadId,
       },
     });
 
-    await tx.boardColumn.createMany({
-      data: defaultColumns.map((title, idx) => ({
-        boardId: board.id,
-        title,
-        position: idx,
-      })),
-    });
+  if (input.tx) {
+    return createBoard(input.tx);
+  }
 
-    return board;
+  return prisma.$transaction(createBoard);
+}
+
+export async function listCompanyProjectBoardsForUser(userId: string, companyId: string) {
+  const company = await prisma.company.findFirst({
+    where: {
+      id: companyId,
+      ownerId: userId,
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      quotationPrefix: true,
+      description: true,
+    },
   });
+
+  if (!company) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const boards = await prisma.board.findMany({
+    where: {
+      ownerId: userId,
+      companyId,
+      workspaceType: WorkspaceType.COMPANY,
+      closedAt: null,
+    },
+    include: {
+      _count: { select: { columns: true, tasks: true } },
+      sourceLead: {
+        select: {
+          id: true,
+          title: true,
+          prospectName: true,
+          stage: true,
+          estimatedValue: true,
+        },
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+  });
+
+  return { company, boards };
 }
 
 export async function updateBoardForUser(input: {
