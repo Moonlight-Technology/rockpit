@@ -17,6 +17,7 @@ type QuotationEditorProps = {
   title?: string;
   description?: string;
   submitLabel?: string;
+  bare?: boolean;
 };
 
 const emptyLine = {
@@ -33,6 +34,7 @@ export function QuotationEditor({
   title = "Quotation editor",
   description = "Build line items and create a new quotation revision.",
   submitLabel = "Save quotation",
+  bare = false,
 }: QuotationEditorProps) {
   const router = useRouter();
   const params = useParams<{ companyId: string }>();
@@ -84,13 +86,23 @@ export function QuotationEditor({
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-[28px] border border-border bg-card p-5 text-card-foreground"
+      className={
+        bare
+          ? "text-card-foreground"
+          : "rounded-[28px] border border-border bg-card p-5 text-card-foreground"
+      }
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-card-foreground">{title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-        </div>
+        {title || description ? (
+          <div>
+            {title ? (
+              <h2 className="text-lg font-semibold text-card-foreground">{title}</h2>
+            ) : null}
+            {description ? (
+              <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+            ) : null}
+          </div>
+        ) : null}
         <label className="grid gap-1 text-sm">
           <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Status</span>
           <select
@@ -110,8 +122,8 @@ export function QuotationEditor({
       <div className="mt-5 space-y-3">
         {lines.map((line, index) => (
           <div
-            key={`${index}-${line.description}`}
-            className="grid gap-3 rounded-2xl border border-border bg-muted/40 p-4 md:grid-cols-[minmax(0,1.8fr)_120px_140px_auto]"
+            key={index}
+            className="space-y-3 rounded-2xl border border-border bg-muted/40 p-4"
           >
             <label className="grid gap-1 text-sm">
               <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
@@ -132,66 +144,76 @@ export function QuotationEditor({
               />
             </label>
 
-            <label className="grid gap-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Qty</span>
-              <input
-                type="number"
-                min={1}
-                value={line.quantity}
-                disabled={isBusy}
-                onChange={(event) =>
-                  setLines((current) =>
-                    current.map((item, itemIndex) =>
-                      itemIndex === index
-                        ? { ...item, quantity: Number(event.target.value || 0) }
-                        : item
+            <div className="grid gap-3 sm:grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <label className="grid gap-1 text-sm">
+                <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  Qty
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  value={line.quantity}
+                  disabled={isBusy}
+                  onChange={(event) =>
+                    setLines((current) =>
+                      current.map((item, itemIndex) =>
+                        itemIndex === index
+                          ? { ...item, quantity: Number(event.target.value || 0) }
+                          : item
+                      )
                     )
-                  )
-                }
-                className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
-              />
-            </label>
+                  }
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
+                />
+              </label>
 
-            <label className="grid gap-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                Unit price
-              </span>
-              <input
-                type="number"
-                min={0}
-                value={line.unitPrice}
-                disabled={isBusy}
-                onChange={(event) =>
-                  setLines((current) =>
-                    current.map((item, itemIndex) =>
-                      itemIndex === index
-                        ? { ...item, unitPrice: Number(event.target.value || 0) }
-                        : item
+              <label className="grid gap-1 text-sm">
+                <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  Unit price
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  value={line.unitPrice}
+                  disabled={isBusy}
+                  onChange={(event) =>
+                    setLines((current) =>
+                      current.map((item, itemIndex) =>
+                        itemIndex === index
+                          ? { ...item, unitPrice: Number(event.target.value || 0) }
+                          : item
+                      )
                     )
-                  )
-                }
-                className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
-              />
-            </label>
+                  }
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
+                />
+              </label>
 
-            <div className="flex items-end gap-2">
-              <div className="flex-1 rounded-xl border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
-                Rp{(line.quantity * line.unitPrice).toLocaleString("id-ID")}
+              <label className="grid gap-1 text-sm">
+                <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  Line total
+                </span>
+                <div className="rounded-xl border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+                  Rp{(line.quantity * line.unitPrice).toLocaleString("id-ID")}
+                </div>
+              </label>
+
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  disabled={isBusy || lines.length === 1}
+                  onClick={() =>
+                    setLines((current) =>
+                      current.length === 1
+                        ? current
+                        : current.filter((_, itemIndex) => itemIndex !== index)
+                    )
+                  }
+                  className="rounded-xl border border-rose-300/20 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Remove
+                </button>
               </div>
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={() =>
-                  setLines((current) =>
-                    current.length === 1
-                      ? current
-                      : current.filter((_, itemIndex) => itemIndex !== index)
-                  )
-                }
-                className="rounded-xl border border-rose-300/20 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-400/10 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Remove
-              </button>
             </div>
           </div>
         ))}
