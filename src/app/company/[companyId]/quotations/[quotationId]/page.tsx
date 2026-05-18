@@ -27,30 +27,30 @@ export default async function CompanyQuotationDetailPage({
 
   return (
     <div className="space-y-6 print:space-y-0">
-      <section className="rounded-3xl border border-white/10 bg-white/6 p-6 text-slate-100 ring-1 ring-white/5 print:hidden">
+      <section className="rounded-3xl border border-border bg-card p-6 text-card-foreground print:hidden">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
             <Link
               href={`/company/${companyId}/quotations`}
-              className="inline-flex items-center gap-2 text-sm text-slate-300 transition hover:text-white"
+              className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
             >
               <ArrowLeft className="size-4" />
               Back to quotations
             </Link>
             <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/80">
+              <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground">
                 Printable detail
               </p>
-              <h1 className="mt-2 text-2xl font-semibold text-white">
+              <h1 className="mt-2 text-2xl font-semibold text-card-foreground">
                 {quotation.quotationNumber} · Rev {quotation.revisionNumber}
               </h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-300">
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
                 Owner-only quotation record for {quotation.lead.prospectName}, ready for print or
                 the next revision.
               </p>
             </div>
           </div>
-          <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+          <div className="rounded-full border border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-2">
               <Printer className="size-4" />
               Use browser print for export
@@ -166,9 +166,9 @@ export default async function CompanyQuotationDetailPage({
           submitLabel="Create revision"
         />
 
-        <aside className="rounded-3xl border border-white/10 bg-white/6 p-5 text-slate-100 ring-1 ring-white/5">
-          <h2 className="text-lg font-semibold text-white">Revision history</h2>
-          <p className="mt-1 text-sm text-slate-400">
+        <aside className="rounded-3xl border border-border bg-card p-5 text-card-foreground">
+          <h2 className="text-lg font-semibold text-card-foreground">Revision history</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             Latest entries for the same lead-attached quotation series.
           </p>
 
@@ -177,18 +177,18 @@ export default async function CompanyQuotationDetailPage({
               <Link
                 key={revision.id}
                 href={`/company/${companyId}/quotations/${revision.id}`}
-                className="block rounded-2xl border border-white/10 bg-black/10 p-4 transition hover:border-cyan-300/30 hover:bg-cyan-300/5"
+                className="block rounded-2xl border border-border bg-muted/40 p-4 transition hover:bg-accent/50"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-white">Rev {revision.revisionNumber}</p>
-                  <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                  <p className="text-sm font-semibold text-card-foreground">Rev {revision.revisionNumber}</p>
+                  <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                     {revision.status}
                   </span>
                 </div>
-                <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                   {revision.issuedAt ? format(new Date(revision.issuedAt), "PPP") : "Draft"}
                 </p>
-                <p className="mt-3 text-sm text-slate-300">
+                <p className="mt-3 text-sm text-muted-foreground">
                   Total Rp{revision.total.toLocaleString("id-ID")}
                 </p>
               </Link>

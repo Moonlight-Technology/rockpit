@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { PwaRegister } from "@/components/pwa-register";
+import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0a",
+  themeColor: "#09090b",
   viewportFit: "cover",
 };
 
@@ -35,9 +36,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full bg-[#0a0a0a] flex flex-col">
-        <TooltipProvider>{children}</TooltipProvider>
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
+      <body className="min-h-full bg-background text-foreground flex flex-col">
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <TooltipProvider>{children}</TooltipProvider>
+        </ThemeProvider>
         <PwaRegister />
       </body>
     </html>

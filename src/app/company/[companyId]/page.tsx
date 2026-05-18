@@ -53,20 +53,20 @@ export default async function CompanyOverviewPage({
   return (
     <div className="space-y-6">
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_320px]">
-        <Card className="border-white/10 bg-linear-to-br from-[#1a1a1a] to-[#121212] text-zinc-100 shadow-none">
+        <Card className="border-border bg-card text-card-foreground shadow-none">
           <CardHeader>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-white/10 bg-[#202020] text-zinc-200">
+              <Badge variant="outline" className="border-border bg-muted text-muted-foreground">
                 Overview
               </Badge>
-              <Badge variant="outline" className="border-white/10 bg-[#202020] text-zinc-400">
+              <Badge variant="outline" className="border-border bg-muted text-muted-foreground">
                 Owner workspace
               </Badge>
             </div>
-            <CardTitle className="text-3xl font-semibold text-white">
+            <CardTitle className="text-3xl font-semibold text-card-foreground">
               Owner dashboard snapshot
             </CardTitle>
-            <CardDescription className="max-w-3xl text-zinc-400">
+            <CardDescription className="max-w-3xl text-muted-foreground">
               Use this summary to track live pipeline value, draft quotation exposure, fresh wins,
               and converted delivery work across {result.company.name}.
             </CardDescription>
@@ -74,14 +74,14 @@ export default async function CompanyOverviewPage({
           <CardContent className="flex flex-wrap items-center gap-3">
             <Link
               href={`/company/${companyId}/leads`}
-              className="inline-flex items-center gap-2 rounded-full bg-[#f2f2f2] px-4 py-2 text-sm font-medium text-[#111] transition hover:bg-white"
+              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium"
             >
               Open lead pipeline
               <ArrowRight className="size-4" />
             </Link>
             <Link
               href={`/company/${companyId}/quotations`}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#1d1d1d] px-4 py-2 text-sm text-zinc-200 transition hover:bg-[#242424] hover:text-white"
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
             >
               Review quotations
               <ArrowRight className="size-4" />
@@ -89,13 +89,13 @@ export default async function CompanyOverviewPage({
           </CardContent>
         </Card>
 
-        <Card className="border-white/10 bg-[#181818] text-zinc-100 shadow-none">
+        <Card className="border-border bg-card text-card-foreground shadow-none">
           <CardHeader>
-            <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+            <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
               Company slug
             </CardDescription>
-            <CardTitle className="text-xl text-white">{result.company.slug}</CardTitle>
-            <CardDescription className="text-zinc-400">
+            <CardTitle className="text-xl text-card-foreground">{result.company.slug}</CardTitle>
+            <CardDescription className="text-muted-foreground">
               Company shell, quotations, and project boards all attach to this workspace identity.
             </CardDescription>
           </CardHeader>
@@ -111,17 +111,17 @@ export default async function CompanyOverviewPage({
           return (
             <Card
               key={item.href}
-              className="border-white/10 bg-[#181818] text-zinc-100 shadow-none transition hover:bg-[#1d1d1d]"
+              className="border-border bg-card text-card-foreground shadow-none transition hover:bg-accent/40"
             >
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <CardTitle className="text-lg text-white">{item.label}</CardTitle>
-                    <CardDescription className="mt-2 text-zinc-400">
+                    <CardTitle className="text-lg text-card-foreground">{item.label}</CardTitle>
+                    <CardDescription className="mt-2 text-muted-foreground">
                       {item.description}
                     </CardDescription>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#202020] p-3 text-zinc-200">
+                  <div className="rounded-2xl border border-border bg-muted p-3 text-muted-foreground">
                     <Icon className="size-4" />
                   </div>
                 </div>
@@ -129,7 +129,7 @@ export default async function CompanyOverviewPage({
               <CardContent>
                 <Link
                   href={item.href}
-                  className="inline-flex items-center gap-1 text-sm text-zinc-200"
+                  className="inline-flex items-center gap-1 text-sm text-foreground"
                 >
                   Open section
                   <ArrowRight className="size-4" />

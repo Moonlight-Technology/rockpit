@@ -84,20 +84,20 @@ export function QuotationEditor({
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-[28px] border border-white/10 bg-[#181818] p-5 text-zinc-100"
+      className="rounded-[28px] border border-border bg-card p-5 text-card-foreground"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
-          <p className="mt-1 text-sm text-zinc-400">{description}</p>
+          <h2 className="text-lg font-semibold text-card-foreground">{title}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
         <label className="grid gap-1 text-sm">
-          <span className="text-xs uppercase tracking-[0.18em] text-zinc-500">Status</span>
+          <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Status</span>
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value as QuotationStatus)}
             disabled={isBusy}
-            className="rounded-xl border border-white/10 bg-[#202020] px-3 py-2 text-white outline-none"
+            className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
           >
             <option value="DRAFT">Draft</option>
             <option value="SENT">Sent</option>
@@ -111,10 +111,10 @@ export function QuotationEditor({
         {lines.map((line, index) => (
           <div
             key={`${index}-${line.description}`}
-            className="grid gap-3 rounded-2xl border border-white/10 bg-[#1d1d1d] p-4 md:grid-cols-[minmax(0,1.8fr)_120px_140px_auto]"
+            className="grid gap-3 rounded-2xl border border-border bg-muted/40 p-4 md:grid-cols-[minmax(0,1.8fr)_120px_140px_auto]"
           >
             <label className="grid gap-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+              <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                 Description
               </span>
               <input
@@ -127,13 +127,13 @@ export function QuotationEditor({
                     )
                   )
                 }
-                className="rounded-xl border border-white/10 bg-[#202020] px-3 py-2 text-white outline-none"
+                className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
                 placeholder="Landing page design and implementation"
               />
             </label>
 
             <label className="grid gap-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.18em] text-zinc-500">Qty</span>
+              <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Qty</span>
               <input
                 type="number"
                 min={1}
@@ -148,12 +148,12 @@ export function QuotationEditor({
                     )
                   )
                 }
-                className="rounded-xl border border-white/10 bg-[#202020] px-3 py-2 text-white outline-none"
+                className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
               />
             </label>
 
             <label className="grid gap-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+              <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                 Unit price
               </span>
               <input
@@ -170,12 +170,12 @@ export function QuotationEditor({
                     )
                   )
                 }
-                className="rounded-xl border border-white/10 bg-[#202020] px-3 py-2 text-white outline-none"
+                className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
               />
             </label>
 
             <div className="flex items-end gap-2">
-              <div className="flex-1 rounded-xl border border-white/10 bg-[#222] px-3 py-2 text-sm text-zinc-300">
+              <div className="flex-1 rounded-xl border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
                 Rp{(line.quantity * line.unitPrice).toLocaleString("id-ID")}
               </div>
               <button
@@ -202,13 +202,13 @@ export function QuotationEditor({
           type="button"
           disabled={isBusy}
           onClick={() => setLines((current) => [...current, emptyLine])}
-          className="rounded-full border border-white/15 bg-[#1d1d1d] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#252525] disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           Add line
         </button>
         <div className="text-right">
-          <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Subtotal</p>
-          <p className="text-lg font-semibold text-white">Rp{subtotal.toLocaleString("id-ID")}</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Subtotal</p>
+          <p className="text-lg font-semibold text-card-foreground">Rp{subtotal.toLocaleString("id-ID")}</p>
         </div>
       </div>
 
@@ -216,7 +216,7 @@ export function QuotationEditor({
         <button
           type="submit"
           disabled={isBusy}
-          className="rounded-full bg-[#f2f2f2] px-4 py-2 text-sm font-medium text-[#111] transition hover:bg-white disabled:opacity-60"
+          className="rounded-full disabled:opacity-60"
         >
           {isBusy ? "Saving..." : submitLabel}
         </button>

@@ -19,7 +19,7 @@ export function CompanySwitcher({
     <div className="flex flex-wrap items-center gap-2">
       <Link
         href="/"
-        className="rounded-full border px-3 py-1.5 text-sm font-medium transition hover:bg-zinc-50"
+        className="rounded-full border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground"
       >
         Personal
       </Link>
@@ -33,7 +33,7 @@ export function CompanySwitcher({
                   ? `/company/${company.id}/settings`
                   : `/company/${company.id}/leads`
               }
-              className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:border-zinc-700 hover:bg-zinc-800"
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium text-card-foreground transition hover:bg-accent hover:text-accent-foreground"
               title={
                 company.access === "OWNER"
                   ? `${company.name} settings`
@@ -46,7 +46,7 @@ export function CompanySwitcher({
           {hasCompanyMode ? (
             <Link
               href="/company/new/settings"
-              className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:border-zinc-700 hover:bg-zinc-800"
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium text-card-foreground transition hover:bg-accent hover:text-accent-foreground"
               title="Create another company"
             >
               Create Company

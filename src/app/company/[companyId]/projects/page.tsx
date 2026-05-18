@@ -25,15 +25,15 @@ export default async function CompanyProjectsPage({
   return (
     <div className="space-y-6">
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_320px]">
-        <Card className="border-white/10 bg-linear-to-br from-[#1a1a1a] to-[#121212] text-zinc-100">
+        <Card className="border-border bg-card text-card-foreground">
           <CardHeader>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-white/10 bg-[#202020] text-zinc-200">
+              <Badge variant="outline" className="border-border bg-muted text-muted-foreground">
                 Projects
               </Badge>
             </div>
-            <CardTitle className="text-3xl text-white">Company project boards</CardTitle>
-            <CardDescription className="max-w-2xl text-zinc-400">
+            <CardTitle className="text-3xl text-card-foreground">Company project boards</CardTitle>
+            <CardDescription className="max-w-2xl text-muted-foreground">
               Won leads become delivery boards here, keeping the originating sales context
               attached to the project workspace.
             </CardDescription>
@@ -41,20 +41,20 @@ export default async function CompanyProjectsPage({
         </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-          <Card className="border-white/10 bg-[#181818] text-zinc-100">
+          <Card className="border-border bg-card text-card-foreground">
             <CardHeader>
-              <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+              <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                 Open boards
               </CardDescription>
-              <CardTitle className="text-2xl text-white">{result.boards.length}</CardTitle>
+              <CardTitle className="text-2xl text-card-foreground">{result.boards.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="border-white/10 bg-[#181818] text-zinc-100">
+          <Card className="border-border bg-card text-card-foreground">
             <CardHeader>
-              <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+              <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                 Converted leads
               </CardDescription>
-              <CardTitle className="text-2xl text-white">
+              <CardTitle className="text-2xl text-card-foreground">
                 {result.boards.filter((board) => board.sourceLeadId).length}
               </CardTitle>
             </CardHeader>
@@ -67,42 +67,42 @@ export default async function CompanyProjectsPage({
           {result.boards.map((board) => (
             <Card
               key={board.id}
-              className="border-white/10 bg-[#181818] text-zinc-100 transition hover:bg-[#1d1d1d]"
+              className="border-border bg-card text-card-foreground transition hover:bg-accent/40"
             >
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                 <div>
-                  <CardTitle className="text-lg text-white">{board.title}</CardTitle>
-                  <CardDescription className="mt-2 text-zinc-400">
+                  <CardTitle className="text-lg text-card-foreground">{board.title}</CardTitle>
+                  <CardDescription className="mt-2 text-muted-foreground">
                     {board.description || "Company delivery board created from a won lead."}
                   </CardDescription>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-[#202020] p-3 text-zinc-200">
+                <div className="rounded-2xl border border-border bg-muted p-3 text-muted-foreground">
                   <KanbanSquare className="size-4" />
                 </div>
                 </div>
               </CardHeader>
 
               <CardContent>
-                <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
-                <span className="rounded-full border border-white/10 bg-[#232323] px-3 py-1">
+                <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                <span className="rounded-full border border-border bg-background px-3 py-1">
                   {board._count.columns} columns
                 </span>
-                <span className="rounded-full border border-white/10 bg-[#232323] px-3 py-1">
+                <span className="rounded-full border border-border bg-background px-3 py-1">
                   {board._count.tasks} tasks
                 </span>
                 {board.sourceLead ? (
-                  <span className="rounded-full border border-white/10 bg-[#232323] px-3 py-1">
+                  <span className="rounded-full border border-border bg-background px-3 py-1">
                     {board.sourceLead.stage}
                   </span>
                 ) : null}
                 </div>
 
                 {board.sourceLead ? (
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-[#1d1d1d] p-4 text-sm text-zinc-300">
-                    <p className="font-medium text-white">{board.sourceLead.prospectName}</p>
+                  <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                    <p className="font-medium text-card-foreground">{board.sourceLead.prospectName}</p>
                     <p className="mt-1">{board.sourceLead.title}</p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                       Pipeline value Rp{board.sourceLead.estimatedValue.toLocaleString("id-ID")}
                     </p>
                   </div>
@@ -110,7 +110,7 @@ export default async function CompanyProjectsPage({
 
                 <Link
                   href={`/boards/${board.id}`}
-                  className="mt-4 inline-flex items-center gap-1 text-sm text-zinc-200"
+                  className="mt-4 inline-flex items-center gap-1 text-sm text-foreground"
                 >
                   Open board
                   <ArrowRight className="size-4" />
@@ -120,14 +120,14 @@ export default async function CompanyProjectsPage({
           ))}
         </section>
       ) : (
-        <section className="rounded-3xl border border-dashed border-white/10 bg-[#181818] p-6 text-zinc-300">
+        <section className="rounded-3xl border border-dashed border-border bg-muted/30 p-6 text-muted-foreground">
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl border border-white/10 bg-[#202020] p-3">
+            <div className="rounded-2xl border border-border bg-background p-3">
               <FolderOpen className="size-4" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-white">No project boards yet</h2>
-              <p className="mt-1 text-sm text-zinc-400">
+              <h2 className="text-lg font-semibold text-card-foreground">No project boards yet</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
                 Convert a won lead from the sales pipeline to create the first company project
                 board.
               </p>

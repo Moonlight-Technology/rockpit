@@ -50,26 +50,26 @@ export function OverviewMetrics({ metrics }: OverviewMetricsProps) {
       {items.map((item) => (
         <Card
           key={item.label}
-          className="border-white/10 bg-linear-to-b from-[#1b1b1b] to-[#191919] text-zinc-100 shadow-none"
+          className="border-border bg-card text-card-foreground shadow-none"
         >
           <CardHeader>
-            <CardDescription className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+            <CardDescription className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
               {item.label}
             </CardDescription>
-            <CardTitle className="text-2xl font-semibold text-white">{item.value}</CardTitle>
+            <CardTitle className="text-2xl font-semibold text-card-foreground">{item.value}</CardTitle>
             <CardAction>
-              <Badge variant="outline" className="border-white/10 bg-[#202020] text-zinc-300">
+              <Badge variant="outline" className="border-border bg-muted text-muted-foreground">
                 <TrendingUpIcon className="size-3.5" />
                 Live
               </Badge>
             </CardAction>
           </CardHeader>
-          <CardFooter className="flex-col items-start gap-1.5 border-white/10 bg-[#1f1f1f] text-sm">
-            <div className="flex items-center gap-2 font-medium text-white">
+          <CardFooter className="flex-col items-start gap-1.5 border-border bg-muted/40 text-sm">
+            <div className="flex items-center gap-2 font-medium text-card-foreground">
               {item.insight}
-              <TrendingUpIcon className="size-4 text-zinc-300" />
+              <TrendingUpIcon className="size-4 text-muted-foreground" />
             </div>
-            <div className="text-zinc-400">{item.description}</div>
+            <div className="text-muted-foreground">{item.description}</div>
           </CardFooter>
         </Card>
       ))}
