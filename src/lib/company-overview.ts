@@ -1,8 +1,10 @@
 import { isSameMonth } from "date-fns";
 
-export function groupLeadsByColumn(
+export function groupLeadsByColumn<
+  TLead extends { id: string; columnId: string; estimatedValue: number },
+>(
   columns: Array<{ id: string; title: string; position: number }>,
-  leads: Array<{ id: string; columnId: string; estimatedValue: number }>
+  leads: TLead[]
 ) {
   return [...columns]
     .sort((a, b) => a.position - b.position)
@@ -21,7 +23,13 @@ export function groupLeadsByColumn(
 
 export function buildCompanyOverviewMetrics(input: {
   leads: Array<{ stage: string; estimatedValue: number; wonAt: Date | null }>;
-  quotations: Array<{ status: string; total: number }>;
+  quotations: Array<{
+    leadId: string;
+    status: string;
+    total: number;
+    revisionNumber: number;
+    createdAt: Date;
+  }>;
   activeProjectCount: number;
   now: Date;
 }) {
@@ -29,7 +37,30 @@ export function buildCompanyOverviewMetrics(input: {
     .filter((lead) => lead.stage !== "WON" && lead.stage !== "LOST")
     .reduce((sum, lead) => sum + lead.estimatedValue, 0);
 
-  const quotationDraftValue = input.quotations
+  const latestDraftTotalsByLead = new Map<
+    string,
+    { status: string; total: number; revisionNumber: number; createdAt: Date }
+  >();
+
+  for (const quotation of input.quotations) {
+    const current = latestDraftTotalsByLead.get(quotation.leadId);
+
+    if (
+      !current ||
+      quotation.revisionNumber > current.revisionNumber ||
+      (quotation.revisionNumber === current.revisionNumber &&
+        quotation.createdAt.getTime() > current.createdAt.getTime())
+    ) {
+      latestDraftTotalsByLead.set(quotation.leadId, {
+        status: quotation.status,
+        total: quotation.total,
+        revisionNumber: quotation.revisionNumber,
+        createdAt: quotation.createdAt,
+      });
+    }
+  }
+
+  const quotationDraftValue = [...latestDraftTotalsByLead.values()]
     .filter((quotation) => quotation.status === "DRAFT")
     .reduce((sum, quotation) => sum + quotation.total, 0);
 
@@ -69,8 +100,11 @@ export async function getCompanyOverviewForUser(userId: string, companyId: strin
       },
       quotations: {
         select: {
+          leadId: true,
           status: true,
           total: true,
+          revisionNumber: true,
+          createdAt: true,
         },
       },
     },

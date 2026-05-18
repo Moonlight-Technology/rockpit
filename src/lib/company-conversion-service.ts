@@ -15,7 +15,7 @@ type ConvertLeadToProjectResult =
         boardId: string;
         companyId: string;
         leadId: string;
-        workspaceType: WorkspaceType.COMPANY;
+        workspaceType: "COMPANY";
       };
     }
   | { error: ConvertLeadToProjectError };

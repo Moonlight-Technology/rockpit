@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canOpenCompanyShell } from "./company-auth.ts";
+import { canOpenCompanyShell } from "./company-auth";
 
 test("canOpenCompanyShell allows premium owners", () => {
   assert.equal(

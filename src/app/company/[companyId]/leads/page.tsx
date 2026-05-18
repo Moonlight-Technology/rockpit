@@ -3,6 +3,8 @@ import { revalidatePath } from "next/cache";
 import { ArrowRight, FolderOpen } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { LeadBoard } from "@/components/company/lead-board";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSessionUserId } from "@/lib/api";
 import { convertLeadToProjectForUser } from "@/lib/company-conversion-service";
 import { getLeadBoardAccessForUser } from "@/lib/company-lead-service";
@@ -67,78 +69,92 @@ export default async function CompanyLeadsPage({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl border border-white/10 bg-white/6 p-6 text-slate-100 ring-1 ring-white/5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/80">Lead board</p>
-            <div>
-              <h1 className="text-2xl font-semibold text-white">{leadBoard.name}</h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-300">
-                {leadBoard.description ||
-                  (isOwner
-                    ? "Track qualified prospects and deal value by stage."
-                    : "Shared sales pipeline you have been invited to collaborate on.")}
-              </p>
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_320px]">
+        <Card className="border-white/10 bg-linear-to-br from-[#1a1a1a] to-[#121212] text-zinc-100">
+          <CardHeader>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="border-white/10 bg-[#202020] text-zinc-200">
+                Lead board
+              </Badge>
+              <Badge variant="outline" className="border-white/10 bg-[#202020] text-zinc-400">
+                {isOwner ? "Owner control" : "Shared access"}
+              </Badge>
             </div>
-          </div>
-          <div className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+            <CardTitle className="text-3xl text-white">{leadBoard.name}</CardTitle>
+            <CardDescription className="max-w-2xl text-zinc-400">
+              {leadBoard.description ||
+                (isOwner
+                  ? "Track qualified prospects and deal value by stage."
+                  : "Shared sales pipeline you have been invited to collaborate on.")}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+          <Card className="border-white/10 bg-[#181818] text-zinc-100">
+            <CardHeader>
+              <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                 Active pipeline
-              </p>
-              <p className="mt-1 text-lg font-semibold text-white">{activeLeadCount}</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+              </CardDescription>
+              <CardTitle className="text-2xl text-white">{activeLeadCount}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="border-white/10 bg-[#181818] text-zinc-100">
+            <CardHeader>
+              <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                 Pipeline value
-              </p>
-              <p className="mt-1 text-lg font-semibold text-white">
+              </CardDescription>
+              <CardTitle className="text-2xl text-white">
                 Rp{totalPipelineValue.toLocaleString("id-ID")}
-              </p>
-            </div>
-          </div>
+              </CardTitle>
+            </CardHeader>
+          </Card>
         </div>
       </section>
 
       {isOwner ? (
-        <section className="rounded-3xl border border-white/10 bg-white/6 p-6 text-slate-100 ring-1 ring-white/5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/80">
-                Won leads
-              </p>
-              <div>
-                <h2 className="text-xl font-semibold text-white">Convert sales wins into projects</h2>
-                <p className="mt-2 max-w-2xl text-sm text-slate-300">
-                  Each won lead can create exactly one company project board, preserving the
-                  source lead relationship for delivery work.
-                </p>
+        <Card className="border-white/10 bg-[#181818] text-zinc-100">
+          <CardHeader>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2">
+                <Badge variant="outline" className="border-white/10 bg-[#202020] text-zinc-200">
+                  Won leads
+                </Badge>
+                <div>
+                  <CardTitle className="text-xl text-white">
+                    Convert sales wins into projects
+                  </CardTitle>
+                  <CardDescription className="mt-2 max-w-2xl text-zinc-400">
+                    Each won lead can create exactly one company project board, preserving the
+                    source lead relationship for delivery work.
+                  </CardDescription>
+                </div>
               </div>
+              <Link
+                href={`/company/${companyId}/projects`}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#1d1d1d] px-4 py-2 text-sm text-zinc-200 transition hover:bg-[#242424] hover:text-white"
+              >
+                View project boards
+                <ArrowRight className="size-4" />
+              </Link>
             </div>
-            <Link
-              href={`/company/${companyId}/projects`}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
-            >
-              View project boards
-              <ArrowRight className="size-4" />
-            </Link>
-          </div>
+          </CardHeader>
 
-          <div className="mt-5 space-y-3">
+          <CardContent className="space-y-3">
             {wonLeads.length > 0 ? (
               wonLeads.map((lead) => (
                 <div
                   key={lead.id}
-                  className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-black/10 p-4 lg:flex-row lg:items-center lg:justify-between"
+                  className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#1d1d1d] p-4 lg:flex-row lg:items-center lg:justify-between"
                 >
                   <div>
                     <p className="text-sm font-semibold text-white">{lead.prospectName}</p>
-                    <p className="mt-1 text-sm text-slate-300">{lead.title}</p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
-                      <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1">
+                    <p className="mt-1 text-sm text-zinc-300">{lead.title}</p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+                      <span className="rounded-full border border-white/10 bg-[#232323] px-3 py-1">
                         {lead.stage}
                       </span>
-                      <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1">
+                      <span className="rounded-full border border-white/10 bg-[#232323] px-3 py-1">
                         Rp{lead.estimatedValue.toLocaleString("id-ID")}
                       </span>
                     </div>
@@ -147,7 +163,7 @@ export default async function CompanyLeadsPage({
                   {lead.convertedProjectBoardId ? (
                     <Link
                       href={`/boards/${lead.convertedProjectBoardId}`}
-                      className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-300/15"
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#232323] px-4 py-2 text-sm text-zinc-200 transition hover:bg-[#2a2a2a]"
                     >
                       Open project board
                       <ArrowRight className="size-4" />
@@ -157,7 +173,7 @@ export default async function CompanyLeadsPage({
                       <input type="hidden" name="leadId" value={lead.id} />
                       <button
                         type="submit"
-                        className="inline-flex items-center gap-2 rounded-full bg-cyan-300 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-200"
+                        className="inline-flex items-center gap-2 rounded-full bg-[#f2f2f2] px-4 py-2 text-sm font-medium text-[#111] transition hover:bg-white"
                       >
                         <FolderOpen className="size-4" />
                         Convert to project
@@ -167,12 +183,12 @@ export default async function CompanyLeadsPage({
                 </div>
               ))
             ) : (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-black/10 p-5 text-sm text-slate-400">
+              <div className="rounded-2xl border border-dashed border-white/10 bg-[#1d1d1d] p-5 text-sm text-zinc-400">
                 No won leads yet. Move a lead into the won stage to unlock project conversion.
               </div>
             )}
-          </div>
-        </section>
+          </CardContent>
+        </Card>
       ) : null}
 
       <LeadBoard

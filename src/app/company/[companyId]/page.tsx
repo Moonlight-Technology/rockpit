@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ArrowRight, FileText, FolderOpen, KanbanSquare, Settings } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { OverviewMetrics } from "@/components/company/overview-metrics";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSessionUserId } from "@/lib/api";
 import { getCompanyOverviewForUser } from "@/lib/company-overview";
 
@@ -50,23 +52,54 @@ export default async function CompanyOverviewPage({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl border border-white/10 bg-white/6 p-6 text-slate-100 ring-1 ring-white/5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/80">Overview</p>
-            <div>
-              <h1 className="text-2xl font-semibold text-white">Owner dashboard snapshot</h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-300">
-                Use this summary to track live pipeline value, draft quotation exposure, fresh wins,
-                and converted delivery work across {result.company.name}.
-              </p>
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_320px]">
+        <Card className="border-white/10 bg-linear-to-br from-[#1a1a1a] to-[#121212] text-zinc-100 shadow-none">
+          <CardHeader>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="border-white/10 bg-[#202020] text-zinc-200">
+                Overview
+              </Badge>
+              <Badge variant="outline" className="border-white/10 bg-[#202020] text-zinc-400">
+                Owner workspace
+              </Badge>
             </div>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-slate-300">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Company slug</p>
-            <p className="mt-1 font-medium text-white">{result.company.slug}</p>
-          </div>
-        </div>
+            <CardTitle className="text-3xl font-semibold text-white">
+              Owner dashboard snapshot
+            </CardTitle>
+            <CardDescription className="max-w-3xl text-zinc-400">
+              Use this summary to track live pipeline value, draft quotation exposure, fresh wins,
+              and converted delivery work across {result.company.name}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            <Link
+              href={`/company/${companyId}/leads`}
+              className="inline-flex items-center gap-2 rounded-full bg-[#f2f2f2] px-4 py-2 text-sm font-medium text-[#111] transition hover:bg-white"
+            >
+              Open lead pipeline
+              <ArrowRight className="size-4" />
+            </Link>
+            <Link
+              href={`/company/${companyId}/quotations`}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#1d1d1d] px-4 py-2 text-sm text-zinc-200 transition hover:bg-[#242424] hover:text-white"
+            >
+              Review quotations
+              <ArrowRight className="size-4" />
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/10 bg-[#181818] text-zinc-100 shadow-none">
+          <CardHeader>
+            <CardDescription className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+              Company slug
+            </CardDescription>
+            <CardTitle className="text-xl text-white">{result.company.slug}</CardTitle>
+            <CardDescription className="text-zinc-400">
+              Company shell, quotations, and project boards all attach to this workspace identity.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </section>
 
       <OverviewMetrics metrics={result.metrics} />
@@ -76,26 +109,33 @@ export default async function CompanyOverviewPage({
           const Icon = item.icon;
 
           return (
-            <Link
+            <Card
               key={item.href}
-              href={item.href}
-              className="rounded-3xl border border-white/10 bg-white/6 p-5 text-slate-100 ring-1 ring-white/5 transition hover:border-cyan-300/30 hover:bg-cyan-300/5"
+              className="border-white/10 bg-[#181818] text-zinc-100 shadow-none transition hover:bg-[#1d1d1d]"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-lg font-semibold text-white">{item.label}</p>
-                  <p className="mt-2 text-sm text-slate-400">{item.description}</p>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-lg text-white">{item.label}</CardTitle>
+                    <CardDescription className="mt-2 text-zinc-400">
+                      {item.description}
+                    </CardDescription>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#202020] p-3 text-zinc-200">
+                    <Icon className="size-4" />
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-cyan-100">
-                  <Icon className="size-4" />
-                </div>
-              </div>
-
-              <div className="mt-4 inline-flex items-center gap-1 text-sm text-cyan-100">
-                Open section
-                <ArrowRight className="size-4" />
-              </div>
-            </Link>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href={item.href}
+                  className="inline-flex items-center gap-1 text-sm text-zinc-200"
+                >
+                  Open section
+                  <ArrowRight className="size-4" />
+                </Link>
+              </CardContent>
+            </Card>
           );
         })}
       </section>

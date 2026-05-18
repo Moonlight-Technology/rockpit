@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normalizeQuotationPrefix } from "../company-premium.ts";
+import { normalizeQuotationPrefix } from "../company-premium";
 
 export const createCompanySchema = z.object({
   name: z.string().trim().min(2).max(80),

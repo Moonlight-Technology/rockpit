@@ -21,8 +21,9 @@ export default async function CompanyQuotationDetailPage({
   if ("error" in result) {
     notFound();
   }
+  const quotationResult = result;
 
-  const { quotation, revisions } = result;
+  const { quotation, revisions } = quotationResult;
 
   return (
     <div className="space-y-6 print:space-y-0">
@@ -64,10 +65,11 @@ export default async function CompanyQuotationDetailPage({
             <div>
               <p className="text-xs uppercase tracking-[0.32em] text-slate-500">Quotation</p>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
-                {result.company.name}
+                {quotationResult.company.name}
               </h2>
               <p className="mt-2 max-w-xl text-sm text-slate-600">
-                {result.company.description || "Company quotation issued from the sales workspace."}
+                {quotationResult.company.description ||
+                  "Company quotation issued from the sales workspace."}
               </p>
             </div>
             <dl className="grid gap-3 text-sm text-slate-600 sm:text-right">

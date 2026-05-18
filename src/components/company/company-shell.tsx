@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties, ComponentType, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,12 +10,28 @@ import {
   FolderOpen,
   KanbanSquare,
   LayoutDashboard,
+  PlusCircle,
   Settings,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
 
 type CompanyShellProps = {
-  children: React.ReactNode;
+  children: ReactNode;
   company: {
     id: string;
     name: string;
@@ -24,6 +41,12 @@ type CompanyShellProps = {
   };
   canManageSettings?: boolean;
   isOnboarding?: boolean;
+};
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
 };
 
 export function CompanyShell({
@@ -38,80 +61,176 @@ export function CompanyShell({
   const projectsHref = `/company/${company.id}/projects`;
   const quotationsHref = `/company/${company.id}/quotations`;
   const settingsHref = `/company/${company.id}/settings`;
-  const navItems = isOnboarding
+
+  const primaryNav: NavItem[] = isOnboarding
     ? [{ href: settingsHref, label: "Settings", icon: Settings }]
     : [
         ...(canManageSettings
           ? [{ href: overviewHref, label: "Overview", icon: LayoutDashboard }]
           : []),
         { href: leadsHref, label: "Leads", icon: KanbanSquare },
-        ...(canManageSettings ? [{ href: projectsHref, label: "Projects", icon: FolderOpen }] : []),
+        ...(canManageSettings
+          ? [{ href: projectsHref, label: "Projects", icon: FolderOpen }]
+          : []),
         ...(canManageSettings
           ? [{ href: quotationsHref, label: "Quotations", icon: FileText }]
           : []),
-        ...(canManageSettings ? [{ href: settingsHref, label: "Settings", icon: Settings }] : []),
       ];
 
+  const secondaryNav: NavItem[] = canManageSettings
+    ? [{ href: settingsHref, label: "Settings", icon: Settings }]
+    : [];
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#1f2937_0%,#0f172a_35%,#020617_100%)] text-slate-100 print:min-h-0 print:bg-white print:text-slate-950">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-6 md:px-8 md:py-8 print:min-h-0 print:max-w-none print:px-0 print:py-0">
-        <header className="rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-2xl shadow-black/20 backdrop-blur md:p-6 print:hidden">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-3">
-              <Link
-                href="/"
-                className="inline-flex items-center gap-2 text-sm text-slate-300 transition hover:text-white"
+    <SidebarProvider
+      className="min-h-screen bg-[#0a0a0a] text-zinc-100 print:block print:min-h-0 print:bg-white print:text-slate-950"
+      style={
+        {
+          "--sidebar-width": "20rem",
+          "--sidebar-width-icon": "4rem",
+          "--header-height": "3.5rem",
+        } as CSSProperties
+      }
+    >
+      <Sidebar
+        variant="inset"
+        collapsible="offcanvas"
+        className="print:hidden [&_[data-slot=sidebar-container]]:bg-[#171717] [&_[data-slot=sidebar-container]]:p-0 [&_[data-slot=sidebar-inner]]:rounded-none [&_[data-slot=sidebar-inner]]:bg-[#171717] [&_[data-slot=sidebar-inner]]:text-zinc-100"
+      >
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                size="lg"
+                className="bg-transparent text-zinc-100 hover:bg-[#232323] hover:text-white"
+                render={<Link href={overviewHref} />}
               >
-                <ArrowLeft className="size-4" />
-                Back to personal workspace
-              </Link>
-              <div className="flex items-start gap-3">
-                <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 p-3 text-cyan-200">
+                <div className="flex size-10 items-center justify-center rounded-2xl border border-white/10 bg-[#222] text-zinc-100">
                   <Building2 className="size-5" />
                 </div>
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-                      {company.name}
-                    </h1>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs uppercase tracking-[0.24em] text-slate-300">
-                      {company.quotationPrefix}
-                    </span>
-                  </div>
-                  <p className="max-w-2xl text-sm text-slate-300">
-                    {isOnboarding
-                      ? "Set up the first company workspace and default sales pipeline."
-                      : company.description || "Company sales pipeline and workspace context."}
-                  </p>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">{company.name}</span>
+                  <span className="truncate text-xs text-zinc-500">
+                    {company.quotationPrefix} · {canManageSettings ? "Owner" : "Collaborator"}
+                  </span>
                 </div>
-              </div>
-            </div>
-            <nav className="flex flex-wrap gap-2">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
 
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition",
-                      isActive
-                        ? "border-cyan-300/30 bg-cyan-300/15 text-cyan-50"
-                        : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white"
-                    )}
-                  >
-                    <Icon className="size-4" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-zinc-500">Workspace</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {primaryNav.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        className="text-zinc-400 hover:bg-[#232323] hover:text-white data-active:bg-[#f2f2f2] data-active:text-[#111]"
+                        render={<Link href={item.href} />}
+                      >
+                        <Icon className="size-4" />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          {secondaryNav.length > 0 ? (
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-zinc-500">Admin</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {secondaryNav.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+                    return (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          isActive={isActive}
+                          className="text-zinc-400 hover:bg-[#232323] hover:text-white data-active:bg-[#f2f2f2] data-active:text-[#111]"
+                          render={<Link href={item.href} />}
+                        >
+                          <Icon className="size-4" />
+                          <span>{item.label}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ) : null}
+        </SidebarContent>
+
+        <SidebarFooter>
+          <div className="rounded-2xl border border-white/10 bg-[#1d1d1d] p-3 text-sm">
+            <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Context</p>
+            <p className="mt-2 font-medium text-white">
+              {isOnboarding ? "Creating first company workspace" : company.slug}
+            </p>
+            <p className="mt-2 text-xs leading-5 text-zinc-400">
+              {isOnboarding
+                ? "Set up identity and pipeline defaults before inviting anyone in."
+                : company.description || "Business-in-a-box workspace for sales and delivery."}
+            </p>
+          </div>
+        </SidebarFooter>
+      </Sidebar>
+
+      <SidebarInset className="bg-[#0b0b0b] shadow-none md:rounded-none md:border md:border-white/10 md:border-l-0 md:bg-[#0b0b0b]">
+        <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b border-white/10 bg-[#0b0b0b] px-4 print:hidden lg:px-6">
+          <SidebarTrigger className="-ml-1 text-zinc-400 hover:text-white" />
+          <Separator orientation="vertical" className="mx-2 h-4 bg-white/10" />
+          <div className="flex flex-1 items-center justify-between gap-4">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+                Company Mode
+              </p>
+              <h1 className="text-sm font-medium text-white">
+                {isOnboarding ? "Initial workspace setup" : company.name}
+              </h1>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {canManageSettings && !isOnboarding ? (
+                <Link
+                  href="/company/new/settings"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#1b1b1b] px-3 py-2 text-sm text-zinc-300 transition hover:bg-[#232323] hover:text-white"
+                >
+                  <PlusCircle className="size-4" />
+                  New Company
+                </Link>
+              ) : null}
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#1b1b1b] px-3 py-2 text-sm text-zinc-300 transition hover:bg-[#232323] hover:text-white"
+              >
+                <ArrowLeft className="size-4" />
+                Personal
+              </Link>
+            </div>
           </div>
         </header>
-        <main className="flex-1 py-6 md:py-8 print:py-0">{children}</main>
-      </div>
-    </div>
+
+        <div className="flex flex-1 flex-col">
+          <div className="@container/main flex flex-1 flex-col gap-2">
+            <div className="flex flex-1 flex-col gap-4 px-4 py-4 md:px-6 md:py-6 print:px-0 print:py-0">
+              {children}
+            </div>
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

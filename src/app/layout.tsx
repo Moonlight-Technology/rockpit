@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { PwaRegister } from "@/components/pwa-register";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f6f7fb",
+  themeColor: "#0a0a0a",
   viewportFit: "cover",
 };
 
@@ -35,8 +36,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">
-        {children}
+      <body className="min-h-full bg-[#0a0a0a] flex flex-col">
+        <TooltipProvider>{children}</TooltipProvider>
         <PwaRegister />
       </body>
     </html>

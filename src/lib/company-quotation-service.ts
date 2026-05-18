@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { format } from "date-fns";
-import { prisma } from "./prisma.ts";
-import { createQuotationSchema } from "./validators/company-quotation.ts";
+import { prisma } from "./prisma";
+import { createQuotationSchema } from "./validators/company-quotation";
 
 const QUOTATION_CONFLICT_CODE = "QUOTATION_CONFLICT";
 const MAX_QUOTATION_CONFLICT_RETRIES = 3;
@@ -9,8 +9,6 @@ const RETRYABLE_QUOTATION_UNIQUES = [
   ["companyId", "quotationNumber", "revisionNumber"],
   ["leadId", "revisionNumber"],
 ] as const;
-const QUOTATION_STATUS_WITH_ISSUED_AT = new Set(["SENT", "APPROVED", "REJECTED"] as const);
-
 const quotationListInclude = {
   lead: {
     select: {
@@ -24,6 +22,70 @@ const quotationListInclude = {
     orderBy: { position: "asc" },
   },
 } satisfies Prisma.CompanyQuotationInclude;
+
+type OwnerCompanyContextError = { error: "NOT_FOUND" | "FORBIDDEN" };
+
+type OwnerCompanyContext = {
+  company: {
+    id: string;
+    ownerId: string;
+    name: string;
+    slug: string;
+    description: string;
+    quotationPrefix: string;
+    leads: Array<{
+      id: string;
+      title: string;
+      prospectName: string;
+      estimatedValue: number;
+      stage: "NEW" | "QUALIFIED" | "PROPOSAL" | "NEGOTIATION" | "WON" | "LOST";
+    }>;
+  };
+};
+
+type QuotationListRecord = Prisma.CompanyQuotationGetPayload<{
+  include: typeof quotationListInclude;
+}>;
+
+type QuotationDetailRecord = Prisma.CompanyQuotationGetPayload<{
+  include: typeof quotationDetailInclude;
+}>;
+
+type QuotationRevisionRecord = {
+  id: string;
+  quotationNumber: string;
+  revisionNumber: number;
+  status: "DRAFT" | "SENT" | "APPROVED" | "REJECTED";
+  subtotal: number;
+  total: number;
+  issuedAt: Date | null;
+  createdAt: Date;
+};
+
+type ListQuotationsResult =
+  | OwnerCompanyContextError
+  | {
+      company: OwnerCompanyContext["company"];
+      leads: OwnerCompanyContext["company"]["leads"];
+      quotations: QuotationListRecord[];
+    };
+
+type CreateQuotationResult =
+  | { data: QuotationDetailRecord }
+  | { error: "FORBIDDEN" | "NOT_FOUND" };
+
+type CreateQuotationRevisionResult =
+  | { data: QuotationDetailRecord }
+  | { error: "FORBIDDEN" | "NOT_FOUND" | "LEAD_MISMATCH" };
+
+type GetQuotationDetailResult =
+  | OwnerCompanyContextError
+  | {
+      company: OwnerCompanyContext["company"];
+      quotation: QuotationDetailRecord;
+      revisions: QuotationRevisionRecord[];
+    }
+  | { error: "NOT_FOUND" };
 
 const quotationDetailInclude = {
   company: {
@@ -114,7 +176,7 @@ export function getIssuedAtForQuotationStatus(
   status: "DRAFT" | "SENT" | "APPROVED" | "REJECTED",
   now: Date
 ) {
-  return QUOTATION_STATUS_WITH_ISSUED_AT.has(status) ? now : null;
+  return status === "DRAFT" ? null : now;
 }
 
 function normalizeErrorTarget(target: unknown) {
@@ -136,11 +198,13 @@ export function isRetryableQuotationConflict(error: unknown) {
     return false;
   }
 
+  const errorRecord = error && typeof error === "object" ? (error as Record<string, unknown>) : null;
+
   const code =
     error instanceof Prisma.PrismaClientKnownRequestError
       ? error.code
-      : "code" in (error ?? {}) && typeof error.code === "string"
-        ? error.code
+      : typeof errorRecord?.code === "string"
+        ? errorRecord.code
         : null;
 
   if (code !== "P2002") {
@@ -150,9 +214,9 @@ export function isRetryableQuotationConflict(error: unknown) {
   const rawTarget =
     error instanceof Prisma.PrismaClientKnownRequestError
       ? error.meta?.target
-      : "meta" in (error ?? {}) && typeof error.meta === "object" && error.meta !== null
-        ? "target" in error.meta
-          ? error.meta.target
+      : errorRecord?.meta && typeof errorRecord.meta === "object"
+        ? "target" in (errorRecord.meta as Record<string, unknown>)
+          ? (errorRecord.meta as Record<string, unknown>).target
           : undefined
         : undefined;
 
@@ -193,7 +257,10 @@ function createQuotationConflictError() {
   return error;
 }
 
-async function getOwnerCompanyContext(userId: string, companyId: string) {
+async function getOwnerCompanyContext(
+  userId: string,
+  companyId: string
+): Promise<OwnerCompanyContext | OwnerCompanyContextError> {
   const company = await prisma.company.findUnique({
     where: { id: companyId },
     select: {
@@ -231,10 +298,13 @@ function sumQuotationLines(lines: Array<{ quantity: number; unitPrice: number }>
   return lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
 }
 
-export async function listQuotationsForUser(userId: string, companyId: string) {
+export async function listQuotationsForUser(
+  userId: string,
+  companyId: string
+): Promise<ListQuotationsResult> {
   const context = await getOwnerCompanyContext(userId, companyId);
   if ("error" in context) {
-    return context;
+    return { error: context.error };
   }
 
   const quotations = await prisma.companyQuotation.findMany({
@@ -254,11 +324,11 @@ export async function createQuotationForUser(input: {
   userId: string;
   companyId: string;
   payload: unknown;
-}) {
+}): Promise<CreateQuotationResult> {
   const parsed = createQuotationSchema.parse(input.payload);
   const context = await getOwnerCompanyContext(input.userId, input.companyId);
   if ("error" in context) {
-    return context;
+    return { error: context.error };
   }
 
   const created = await retryOnQuotationConflict(() =>
@@ -350,11 +420,11 @@ export async function createQuotationRevisionForUser(input: {
   companyId: string;
   quotationId: string;
   payload: unknown;
-}) {
+}): Promise<CreateQuotationRevisionResult> {
   const parsed = createQuotationSchema.parse(input.payload);
   const context = await getOwnerCompanyContext(input.userId, input.companyId);
   if ("error" in context) {
-    return context;
+    return { error: context.error };
   }
 
   const created = await retryOnQuotationConflict(() =>
@@ -437,10 +507,10 @@ export async function getQuotationDetailForUser(input: {
   userId: string;
   companyId: string;
   quotationId: string;
-}) {
+}): Promise<GetQuotationDetailResult> {
   const context = await getOwnerCompanyContext(input.userId, input.companyId);
   if ("error" in context) {
-    return context;
+    return { error: context.error };
   }
 
   const quotation = await prisma.companyQuotation.findFirst({

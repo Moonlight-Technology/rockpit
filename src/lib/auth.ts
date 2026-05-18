@@ -76,8 +76,6 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.hasCompanyMode = readHasCompanyMode(user);
-      } else if (typeof token.id === "string") {
-        token.hasCompanyMode = await getHasCompanyMode(token.id);
       }
 
       return token;

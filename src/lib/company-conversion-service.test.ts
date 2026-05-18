@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Prisma } from "@prisma/client";
 import {
   canConvertLeadToProject,
   convertLeadToProjectWithDependencies,
-} from "./company-conversion-service.ts";
+} from "./company-conversion-service";
+
+function createTransactionRunner(tx: unknown) {
+  return async <T>(fn: (client: Prisma.TransactionClient) => Promise<T>) =>
+    fn(tx as Prisma.TransactionClient);
+}
 
 test("canConvertLeadToProject allows won leads that have not been converted", () => {
   assert.equal(
@@ -59,7 +65,7 @@ test("convertLeadToProjectWithDependencies converts a won lead and links the new
     },
     {
       prisma: {
-        $transaction: async <T>(fn: (client: typeof tx) => Promise<T>) => fn(tx),
+        $transaction: createTransactionRunner(tx),
       },
       createCompanyProjectBoard: async (args) => {
         createCompanyProjectBoardCalls.push(args as Record<string, unknown>);
@@ -101,22 +107,21 @@ test("convertLeadToProjectWithDependencies returns already converted when the le
     },
     {
       prisma: {
-        $transaction: async <T>(fn: (client: unknown) => Promise<T>) =>
-          fn({
-            company: {
-              findUnique: async () => ({ id: "company-1", ownerId: "user-1" }),
-            },
-            companyLead: {
-              findFirst: async () => ({
-                id: "lead-1",
-                title: "Website revamp",
-                prospectName: "Acme Corp",
-                notes: "",
-                stage: "WON",
-                convertedProjectBoardId: "board-1",
-              }),
-            },
-          }),
+        $transaction: createTransactionRunner({
+          company: {
+            findUnique: async () => ({ id: "company-1", ownerId: "user-1" }),
+          },
+          companyLead: {
+            findFirst: async () => ({
+              id: "lead-1",
+              title: "Website revamp",
+              prospectName: "Acme Corp",
+              notes: "",
+              stage: "WON",
+              convertedProjectBoardId: "board-1",
+            }),
+          },
+        }),
       },
       createCompanyProjectBoard: async () => {
         throw new Error("should not create board");
@@ -138,34 +143,33 @@ test("convertLeadToProjectWithDependencies returns invalid stage when the lead i
     },
     {
       prisma: {
-        $transaction: async <T>(fn: (client: unknown) => Promise<T>) =>
-          fn({
-            company: {
-              findUnique: async () => ({ id: "company-1", ownerId: "user-1" }),
-            },
-            companyLead: {
-              findFirst: async ({ select }: { select: Record<string, boolean> }) => {
-                findFirstCallCount += 1;
+        $transaction: createTransactionRunner({
+          company: {
+            findUnique: async () => ({ id: "company-1", ownerId: "user-1" }),
+          },
+          companyLead: {
+            findFirst: async ({ select }: { select: Record<string, boolean> }) => {
+              findFirstCallCount += 1;
 
-                if ("title" in select) {
-                  return {
-                    id: "lead-1",
-                    title: "Website revamp",
-                    prospectName: "Acme Corp",
-                    notes: "",
-                    stage: "WON",
-                    convertedProjectBoardId: null,
-                  };
-                }
-
+              if ("title" in select) {
                 return {
-                  stage: "LOST",
+                  id: "lead-1",
+                  title: "Website revamp",
+                  prospectName: "Acme Corp",
+                  notes: "",
+                  stage: "WON",
                   convertedProjectBoardId: null,
                 };
-              },
-              updateMany: async () => ({ count: 0 }),
+              }
+
+              return {
+                stage: "LOST",
+                convertedProjectBoardId: null,
+              };
             },
-          }),
+            updateMany: async () => ({ count: 0 }),
+          },
+        }),
       },
       createCompanyProjectBoard: async () => ({ id: "board-1" }),
     }

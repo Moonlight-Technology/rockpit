@@ -60,10 +60,10 @@ export function CompanyOnboardingForm() {
   };
 
   return (
-    <Card className="border border-white/10 bg-white/6 text-slate-100 ring-white/10">
+    <Card className="border border-white/10 bg-[#181818] text-zinc-100">
       <CardHeader>
         <CardTitle>Create company workspace</CardTitle>
-        <CardDescription className="text-slate-300">
+        <CardDescription className="text-zinc-400">
           This creates the company profile and the default Sales Pipeline lead board.
         </CardDescription>
       </CardHeader>
@@ -77,9 +77,9 @@ export function CompanyOnboardingForm() {
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Mamat Metal Works"
-                className="border-white/10 bg-white/5 text-slate-50 placeholder:text-slate-400"
+                className="border-white/10 bg-[#202020] text-slate-50 placeholder:text-zinc-500"
               />
-              <FieldDescription className="text-slate-400">
+              <FieldDescription className="text-zinc-400">
                 This becomes the workspace label and base for the company slug.
               </FieldDescription>
             </FieldContent>
@@ -93,10 +93,10 @@ export function CompanyOnboardingForm() {
                 value={quotationPrefix}
                 onChange={(event) => setQuotationPrefix(event.target.value)}
                 placeholder="MAMATQT"
-                className="border-white/10 bg-white/5 text-slate-50 placeholder:text-slate-400"
+                className="border-white/10 bg-[#202020] text-slate-50 placeholder:text-zinc-500"
               />
-              <FieldDescription className="text-slate-400">
-                Normalized preview: <span className="font-medium text-slate-200">{normalizedPrefix || "N/A"}</span>
+              <FieldDescription className="text-zinc-400">
+                Normalized preview: <span className="font-medium text-zinc-200">{normalizedPrefix || "N/A"}</span>
               </FieldDescription>
             </FieldContent>
           </Field>
@@ -111,9 +111,9 @@ export function CompanyOnboardingForm() {
                 rows={5}
                 maxLength={500}
                 placeholder="What kind of service work does this company handle?"
-                className="min-h-28 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-50 outline-none transition focus-visible:border-cyan-300/40 focus-visible:ring-3 focus-visible:ring-cyan-300/20 placeholder:text-slate-400"
+                className="min-h-28 w-full rounded-xl border border-white/10 bg-[#202020] px-3 py-2 text-sm text-slate-50 outline-none transition focus-visible:border-white/20 focus-visible:ring-2 focus-visible:ring-white/10 placeholder:text-zinc-500"
               />
-              <FieldDescription className="text-slate-400">
+              <FieldDescription className="text-zinc-400">
                 Optional context for future leads, quotations, and workspace switching.
               </FieldDescription>
             </FieldContent>
@@ -125,12 +125,12 @@ export function CompanyOnboardingForm() {
             </p>
           ) : null}
 
-          <Button type="submit" size="lg" disabled={isSubmitting}>
+          <Button type="submit" size="lg" disabled={isSubmitting} className="bg-[#f2f2f2] text-[#111] hover:bg-white">
             {isSubmitting ? "Creating company..." : "Create company"}
           </Button>
         </form>
       </CardContent>
-      <CardFooter className="border-white/10 bg-white/5 text-sm text-slate-300">
+      <CardFooter className="border-white/10 bg-[#1d1d1d] text-sm text-zinc-400">
         Business type is fixed to JASA for this release.
       </CardFooter>
     </Card>
