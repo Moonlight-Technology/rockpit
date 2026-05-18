@@ -1,4 +1,4 @@
-import { buildHelicopterDashboardData } from "./helicopter-dashboard";
+import { buildHelicopterDashboardData } from "./helicopter-dashboard.ts";
 
 const task = {
   id: "task-1",
@@ -12,7 +12,7 @@ const task = {
   assignee: null,
 };
 
-const dashboardData = buildHelicopterDashboardData([task]);
+const dashboardData = buildHelicopterDashboardData([task], new Date("2026-05-17T00:00:00.000Z"));
 const bucketTask = dashboardData.buckets[0]?.tasks[0];
 
 if (!bucketTask) {

@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import {
   canConvertLeadToProject,
   convertLeadToProjectWithDependencies,
-} from "./company-conversion-service";
+} from "./company-conversion-service.ts";
 
 function createTransactionRunner(tx: unknown) {
   return async <T>(fn: (client: Prisma.TransactionClient) => Promise<T>) =>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildHelicopterDashboardData } from "./helicopter-dashboard";
+import { buildHelicopterDashboardData } from "./helicopter-dashboard.ts";
 
 const now = new Date("2026-05-17T09:00:00.000Z");
 

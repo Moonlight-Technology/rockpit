@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { format } from "date-fns";
-import { prisma } from "./prisma";
-import { createQuotationSchema } from "./validators/company-quotation";
+import { prisma } from "./prisma.ts";
+import { createQuotationSchema } from "./validators/company-quotation.ts";
 
 const QUOTATION_CONFLICT_CODE = "QUOTATION_CONFLICT";
 const MAX_QUOTATION_CONFLICT_RETRIES = 3;

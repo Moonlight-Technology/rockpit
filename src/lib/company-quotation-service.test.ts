@@ -7,7 +7,7 @@ import {
   nextQuotationSequence,
   nextRevisionNumber,
   retryOnQuotationConflict,
-} from "./company-quotation-service";
+} from "./company-quotation-service.ts";
 
 test("formatQuotationNumber builds a company-prefixed sequence number", () => {
   assert.equal(

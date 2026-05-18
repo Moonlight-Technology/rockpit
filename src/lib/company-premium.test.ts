@@ -4,7 +4,7 @@ import {
   COMPANY_MODE_UNLOCK_CODE,
   isValidCompanyUnlockCode,
   normalizeQuotationPrefix,
-} from "./company-premium";
+} from "./company-premium.ts";
 
 test("isValidCompanyUnlockCode accepts the exact configured unlock code", () => {
   assert.equal(COMPANY_MODE_UNLOCK_CODE, "MAMAT-METAL");

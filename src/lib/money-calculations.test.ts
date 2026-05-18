@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateAccountBalances, filterMoneyTransactions } from "./money-calculations";
+import { calculateAccountBalances, filterMoneyTransactions } from "./money-calculations.ts";
 
 test("calculateAccountBalances applies income expense transfer lend and receivable payments", () => {
   const balances = calculateAccountBalances([

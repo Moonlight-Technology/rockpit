@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createCompanySchema } from "./company";
+import { createCompanySchema } from "./company.ts";
 
 test("createCompanySchema defaults business type to JASA and normalizes prefix", () => {
   const parsed = createCompanySchema.parse({
