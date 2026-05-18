@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { format } from "date-fns";
 import { Plus, PlaneTakeoff, CalendarDays, Menu, WalletCards } from "lucide-react";
-import { CompanySwitcher } from "@/components/company/company-switcher";
+import { CompanyModeMenu } from "@/components/company/company-mode-menu";
 import { CompanyUnlockDialog } from "@/components/company/company-unlock-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -233,11 +233,6 @@ export default function Home() {
     [tasks]
   );
   const previewTasks = openTasks.slice(0, 4);
-  const ownerCompanies = useMemo(
-    () => companies.filter((company) => company.access === "OWNER"),
-    [companies]
-  );
-
   const doneCount = useMemo(
     () => tasks.filter((task) => task.status === "DONE").length,
     [tasks]
@@ -583,30 +578,17 @@ export default function Home() {
             <p className="text-sm text-muted-foreground">
               Organize your week with one clear dashboard.
             </p>
-            <CompanySwitcher
-              hasCompanyMode={hasCompanyMode}
-              companies={companies}
-              onOpenLockedMode={() => setShowCompanyUnlockDialog(true)}
-            />
-            {ownerCompanies.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                {ownerCompanies.map((company) => (
-                  <Link
-                    key={company.id}
-                    href={`/company/${company.id}`}
-                    className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-900 transition hover:border-cyan-300 hover:bg-cyan-100"
-                  >
-                    {company.name} Overview
-                  </Link>
-                ))}
-              </div>
-            ) : null}
             <p className="text-xs text-muted-foreground md:hidden">
               {format(new Date(), "EEEE, MMM d")}
             </p>
           </div>
           <div className="hidden items-center gap-2 md:flex">
             <PwaInstallButton />
+            <CompanyModeMenu
+              hasCompanyMode={hasCompanyMode}
+              companies={companies}
+              onOpenLockedMode={() => setShowCompanyUnlockDialog(true)}
+            />
             <Button
               size="sm"
               variant="outline"
@@ -658,6 +640,13 @@ export default function Home() {
               <Card className="absolute right-0 top-11 z-40 w-64 shadow-lg">
                 <CardContent className="flex flex-col gap-1 p-2">
                   <PwaInstallButton />
+                  <CompanyModeMenu
+                    mobile
+                    hasCompanyMode={hasCompanyMode}
+                    companies={companies}
+                    onOpenLockedMode={() => setShowCompanyUnlockDialog(true)}
+                    onNavigate={() => setShowMobileMenu(false)}
+                  />
                   <Button
                     size="sm"
                     variant="ghost"
