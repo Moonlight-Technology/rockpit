@@ -1,6 +1,6 @@
 import { BoardRole, CompanyLeadStage, Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { createLeadSchema, updateLeadSchema } from "@/lib/validators/company-lead";
+import { prisma } from "./prisma.ts";
+import { createLeadSchema, updateLeadSchema } from "./validators/company-lead.ts";
 
 const leadBoardDetailInclude = {
   columns: {
@@ -18,7 +18,39 @@ const leadBoardDetailInclude = {
   },
 } satisfies Prisma.CompanyLeadBoardInclude;
 
-type LeadWorkflowError = "FORBIDDEN" | "NOT_FOUND" | "INVALID_COLUMN" | "USER_NOT_FOUND";
+type LeadWorkflowError =
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "INVALID_COLUMN"
+  | "INVALID_CLIENT"
+  | "USER_NOT_FOUND";
+
+type LeadDeps = {
+  prisma: {
+    companyLeadBoard: {
+      findMany: (args: unknown) => Promise<
+        Array<{
+          id: string;
+          companyId: string;
+          company: { ownerId: string };
+          members: Array<{ userId: string }>;
+          columns: Array<{ id: string; title: string; position: number }>;
+        }>
+      >;
+      findUnique?: typeof prisma.companyLeadBoard.findUnique;
+    };
+    companyClient: {
+      findFirst: (args: unknown) => Promise<{ id: string; name: string } | null>;
+    };
+    companyLead: {
+      create: (args: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>;
+    };
+  };
+};
+
+const leadCreateDeps: LeadDeps = {
+  prisma: prisma as unknown as LeadDeps["prisma"],
+};
 
 type LeadBoardAccessContext = {
   boardId: string;
@@ -52,7 +84,21 @@ async function getPrimaryLeadBoardContext(
   userId: string,
   companyId: string
 ): Promise<LeadBoardAccessContext | { error: LeadWorkflowError }> {
-  const boards = await prisma.companyLeadBoard.findMany({
+  return getPrimaryLeadBoardContextWithDependencies(userId, companyId, {
+    prisma: {
+      companyLeadBoard: prisma.companyLeadBoard as unknown as LeadDeps["prisma"]["companyLeadBoard"],
+      companyClient: prisma.companyClient as unknown as LeadDeps["prisma"]["companyClient"],
+      companyLead: prisma.companyLead as unknown as LeadDeps["prisma"]["companyLead"],
+    },
+  });
+}
+
+async function getPrimaryLeadBoardContextWithDependencies(
+  userId: string,
+  companyId: string,
+  deps: Pick<LeadDeps, "prisma">
+): Promise<LeadBoardAccessContext | { error: LeadWorkflowError }> {
+  const boards = await deps.prisma.companyLeadBoard.findMany({
     where: { companyId },
     orderBy: { createdAt: "asc" },
     select: {
@@ -132,8 +178,23 @@ export async function createLeadForUser(input: {
   companyId: string;
   payload: unknown;
 }) {
+  return createLeadWithDependencies(input, leadCreateDeps);
+}
+
+export async function createLeadWithDependencies(
+  input: {
+    userId: string;
+    companyId: string;
+    payload: unknown;
+  },
+  deps: LeadDeps = leadCreateDeps
+) {
   const parsed = createLeadSchema.parse(input.payload);
-  const context = await getPrimaryLeadBoardContext(input.userId, input.companyId);
+  const context = await getPrimaryLeadBoardContextWithDependencies(
+    input.userId,
+    input.companyId,
+    deps
+  );
   if ("error" in context) {
     return context;
   }
@@ -147,14 +208,23 @@ export async function createLeadForUser(input: {
     return { error: "INVALID_COLUMN" as const };
   }
 
-  const lead = await prisma.companyLead.create({
+  const client = await deps.prisma.companyClient.findFirst({
+    where: { id: parsed.clientId, companyId: context.companyId },
+    select: { id: true, name: true },
+  });
+  if (!client) {
+    return { error: "INVALID_CLIENT" as const };
+  }
+
+  const lead = await deps.prisma.companyLead.create({
     data: {
       companyId: context.companyId,
       leadBoardId: context.boardId,
       columnId: column.id,
       ownerUserId: input.userId,
       title: parsed.title,
-      prospectName: parsed.prospectName,
+      clientId: client.id,
+      prospectName: client.name,
       estimatedValue: parsed.estimatedValue,
       notes: parsed.notes,
       stage: getStageFromColumnTitle(column.title),

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { createLeadForUser, getLeadBoardAccessForUser } from "@/lib/company-lead-service";
+import { createClientForUser, listClientsForUser } from "@/lib/company-client-service";
 import { forbidden, getSessionUserId, notFound, unauthorized, validationError } from "@/lib/api";
 
 export async function GET(
@@ -13,15 +13,15 @@ export async function GET(
   }
 
   const { companyId } = await params;
-  const result = await getLeadBoardAccessForUser(userId, companyId);
+  const result = await listClientsForUser({ userId, companyId });
   if ("error" in result) {
     if (result.error === "FORBIDDEN") {
-      return forbidden("Lead board access denied.");
+      return forbidden("Only company owner can manage clients.");
     }
-    return notFound("Lead board not found.");
+    return notFound("Company not found.");
   }
 
-  return NextResponse.json({ ok: true, data: result.board });
+  return NextResponse.json({ ok: true, data: result.data });
 }
 
 export async function POST(
@@ -41,24 +41,18 @@ export async function POST(
       return validationError("Invalid JSON payload.");
     }
 
-    const result = await createLeadForUser({ userId, companyId, payload });
+    const result = await createClientForUser({ userId, companyId, payload });
     if ("error" in result) {
       if (result.error === "FORBIDDEN") {
-        return forbidden("Only company owner can create leads.");
+        return forbidden("Only company owner can manage clients.");
       }
-      if (result.error === "INVALID_COLUMN") {
-        return validationError("Selected lead column is invalid.");
-      }
-      if (result.error === "INVALID_CLIENT") {
-        return validationError("Selected client is invalid.");
-      }
-      return notFound("Lead board not found.");
+      return notFound("Company not found.");
     }
 
     return NextResponse.json({ ok: true, data: result.data }, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) {
-      return validationError(error.issues[0]?.message ?? "Invalid lead payload.");
+      return validationError(error.issues[0]?.message ?? "Invalid client payload.");
     }
 
     return NextResponse.json(

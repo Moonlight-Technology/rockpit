@@ -119,27 +119,27 @@ model User {
 }
 
 model Board {
-  id                String       @id @default(cuid())
+  id                String            @id @default(cuid())
   title             String
   description       String
   theme             String
-  tags              String[]     @default([])
+  tags              String[]          @default([])
   dueDate           DateTime?
   closedAt          DateTime?
   ownerId           String
-  workspaceType     WorkspaceType @default(PERSONAL)
+  workspaceType     WorkspaceType     @default(PERSONAL)
   companyId         String?
-  sourceLeadId      String?      @unique
-  owner             User         @relation("BoardOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  company           Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  sourceLead        CompanyLead? @relation("BoardSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
-  convertedFromLead CompanyLead? @relation("CompanyLeadConvertedProjectBoard")
+  sourceLeadId      String?           @unique
+  owner             User              @relation("BoardOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  company           Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  sourceLead        CompanyLead?      @relation("BoardSourceLead", fields: [sourceLeadId], references: [id], onDelete: SetNull)
+  convertedFromLead CompanyLead?      @relation("CompanyLeadConvertedProjectBoard")
   members           BoardMember[]
   columns           BoardColumn[]
   tasks             Task[]
   projectInfo       BoardProjectInfo?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 }
 
 model UserPremiumUnlock {
@@ -159,6 +159,7 @@ model Company {
   businessType    CompanyBusinessType @default(JASA)
   quotationPrefix String
   owner           User                @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  clients         CompanyClient[]
   leadBoards      CompanyLeadBoard[]
   leads           CompanyLead[]
   quotations      CompanyQuotation[]
@@ -168,6 +169,23 @@ model Company {
 
   @@unique([ownerId, slug])
   @@unique([ownerId, quotationPrefix])
+}
+
+model CompanyClient {
+  id          String        @id @default(cuid())
+  companyId   String
+  name        String
+  email       String        @default("")
+  phone       String        @default("")
+  companyName String        @default("")
+  address     String        @default("")
+  notes       String        @default("")
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leads       CompanyLead[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([companyId, name])
 }
 
 model CompanyLeadBoard {
@@ -210,6 +228,7 @@ model CompanyLead {
   companyId               String
   leadBoardId             String
   columnId                String
+  clientId                String?
   ownerUserId             String
   title                   String
   prospectName            String
@@ -221,12 +240,15 @@ model CompanyLead {
   company                 Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   leadBoard               CompanyLeadBoard   @relation(fields: [leadBoardId], references: [id], onDelete: Cascade)
   column                  CompanyLeadColumn  @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  client                  CompanyClient?     @relation(fields: [clientId], references: [id], onDelete: Restrict)
   owner                   User               @relation("CompanyLeadOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   quotations              CompanyQuotation[]
   sourceProjectBoard      Board?             @relation("BoardSourceLead")
   convertedProjectBoard   Board?             @relation("CompanyLeadConvertedProjectBoard", fields: [convertedProjectBoardId], references: [id], onDelete: SetNull)
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
+
+  @@index([companyId, clientId])
 }
 
 model CompanyQuotation {

@@ -23,11 +23,17 @@ type LeadBoardProps = {
       stage: string;
     }>;
   }>;
+  clients: Array<{
+    id: string;
+    name: string;
+    companyName: string;
+    email: string;
+  }>;
 };
 
 const initialLeadForm = {
   title: "",
-  prospectName: "",
+  clientId: "",
   estimatedValue: "",
   notes: "",
   columnId: "",
@@ -38,11 +44,13 @@ export function LeadBoard({
   canManage,
   collaboratorCount,
   columns,
+  clients,
 }: LeadBoardProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [leadForm, setLeadForm] = useState(() => ({
     ...initialLeadForm,
+    clientId: clients[0]?.id ?? "",
     columnId: columns[0]?.id ?? "",
   }));
   const [inviteEmail, setInviteEmail] = useState("");
@@ -53,7 +61,7 @@ export function LeadBoard({
   const normalizedEstimatedValue = Number(leadForm.estimatedValue);
   const isLeadFormValid =
     leadForm.title.trim().length > 0 &&
-    leadForm.prospectName.trim().length > 0 &&
+    leadForm.clientId.length > 0 &&
     Number.isFinite(normalizedEstimatedValue) &&
     normalizedEstimatedValue > 0 &&
     leadForm.columnId.length > 0;
@@ -85,6 +93,7 @@ export function LeadBoard({
 
     setLeadForm({
       ...initialLeadForm,
+      clientId: clients[0]?.id ?? "",
       columnId: columns[0]?.id ?? "",
     });
     setLeadSuccess("Lead created.");
@@ -117,10 +126,10 @@ export function LeadBoard({
     <div className="space-y-6">
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.9fr)]">
         {canManage ? (
-          <Card className="border-white/10 bg-[#181818] text-zinc-100">
+          <Card className="border-border bg-card text-card-foreground">
             <CardHeader>
-              <CardTitle className="text-base text-white">Create lead</CardTitle>
-              <CardDescription className="text-zinc-400">
+              <CardTitle className="text-base text-card-foreground">Create lead</CardTitle>
+              <CardDescription className="text-muted-foreground">
                 Add a prospect directly into the pipeline.
               </CardDescription>
             </CardHeader>
@@ -139,24 +148,26 @@ export function LeadBoard({
                     setLeadForm((current) => ({ ...current, title: event.target.value }))
                   }
                   autoComplete="off"
-                  className="border-white/10 bg-[#202020] text-white"
+                  className="border-border bg-background text-foreground"
                   placeholder="Website redesign"
                 />
               </label>
               <label className="grid gap-1 text-sm">
-                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                  Prospect
-                </span>
-                <Input
-                  name="companyLeadProspect"
-                  value={leadForm.prospectName}
+                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Client</span>
+                <select
+                  value={leadForm.clientId}
                   onChange={(event) =>
-                    setLeadForm((current) => ({ ...current, prospectName: event.target.value }))
+                    setLeadForm((current) => ({ ...current, clientId: event.target.value }))
                   }
-                  autoComplete="off"
-                  className="border-white/10 bg-[#202020] text-white"
-                  placeholder="PT Nusantara"
-                />
+                  className="h-8 rounded-lg border border-border bg-background px-3 text-foreground outline-none"
+                  disabled={clients.length === 0}
+                >
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.companyName ? `${client.name} - ${client.companyName}` : client.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="grid gap-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
@@ -173,7 +184,7 @@ export function LeadBoard({
                   }
                   inputMode="numeric"
                   autoComplete="off"
-                  className="border-white/10 bg-[#202020] text-white"
+                  className="border-border bg-background text-foreground"
                   placeholder="5000000"
                 />
               </label>
@@ -184,7 +195,7 @@ export function LeadBoard({
                   onChange={(event) =>
                     setLeadForm((current) => ({ ...current, columnId: event.target.value }))
                   }
-                  className="h-8 rounded-lg border border-white/10 bg-[#202020] px-3 text-white outline-none"
+                  className="h-8 rounded-lg border border-border bg-background px-3 text-foreground outline-none"
                 >
                   {columns.map((column) => (
                     <option key={column.id} value={column.id}>
@@ -203,15 +214,20 @@ export function LeadBoard({
                   }
                   rows={3}
                   autoComplete="off"
-                  className="rounded-xl border border-white/10 bg-[#202020] px-3 py-2 text-white outline-none"
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
                   placeholder="Initial context, scope, or next step"
                 />
               </label>
                 <div className="mt-2 flex flex-wrap items-center gap-3 md:col-span-2">
+                  {clients.length === 0 ? (
+                    <p className="basis-full text-sm text-muted-foreground">
+                      Create a client first before adding a lead.
+                    </p>
+                  ) : null}
                   <Button
                     type="submit"
                     disabled={isPending || !isLeadFormValid}
-                    className="rounded-full bg-[#f2f2f2] px-4 text-sm font-medium text-[#111] hover:bg-white"
+                    className="rounded-full px-4 text-sm font-medium"
                   >
                     Add lead
                   </Button>
@@ -222,27 +238,27 @@ export function LeadBoard({
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-white/10 bg-[#181818] text-zinc-100">
+          <Card className="border-border bg-card text-card-foreground">
             <CardHeader>
-              <CardTitle className="text-base text-white">Collaborator access</CardTitle>
-              <CardDescription className="text-zinc-400">
+              <CardTitle className="text-base text-card-foreground">Collaborator access</CardTitle>
+              <CardDescription className="text-muted-foreground">
                 You can review the pipeline and coordinate with the owner from this shared board.
               </CardDescription>
             </CardHeader>
           </Card>
         )}
 
-        <Card className="border-white/10 bg-[#181818] text-zinc-100">
+        <Card className="border-border bg-card text-card-foreground">
           <CardHeader>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <CardTitle className="text-base text-white">Collaborators</CardTitle>
-                <CardDescription className="text-zinc-400">
+                <CardTitle className="text-base text-card-foreground">Collaborators</CardTitle>
+                <CardDescription className="text-muted-foreground">
                   {collaboratorCount} active participant{collaboratorCount === 1 ? "" : "s"} on
                   this board.
                 </CardDescription>
               </div>
-              <Badge variant="outline" className="border-white/10 bg-[#202020] text-zinc-400">
+              <Badge variant="outline" className="border-border bg-muted text-muted-foreground">
                 Shared board
               </Badge>
             </div>
@@ -257,7 +273,7 @@ export function LeadBoard({
                       type="email"
                       value={inviteEmail}
                       onChange={(event) => setInviteEmail(event.target.value)}
-                      className="border-white/10 bg-[#202020] text-white"
+                      className="border-border bg-background text-foreground"
                       placeholder="collaborator@example.com"
                     />
                   </label>
@@ -266,7 +282,7 @@ export function LeadBoard({
                       type="submit"
                       disabled={isPending}
                       variant="outline"
-                      className="rounded-full border-white/15 bg-[#1f1f1f] px-4 text-white hover:bg-[#252525]"
+                      className="rounded-full border-border bg-background px-4 text-foreground hover:bg-accent"
                     >
                       Invite collaborator
                     </Button>
@@ -277,7 +293,7 @@ export function LeadBoard({
                   </div>
                 </>
               ) : (
-                <p className="text-sm text-zinc-400">
+                <p className="text-sm text-muted-foreground">
                   Only the company owner can add or change collaborator access for this board.
                 </p>
               )}
@@ -290,17 +306,17 @@ export function LeadBoard({
         {columns.map((column) => (
           <Card
             key={column.id}
-            className="border-white/10 bg-[#181818] text-zinc-100"
+            className="border-border bg-card text-card-foreground"
           >
-            <CardHeader className="border-b border-white/10">
+            <CardHeader className="border-b border-border">
               <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle className="text-sm text-white">{column.title}</CardTitle>
-                <CardDescription className="mt-1 text-xs text-zinc-500">
+                <CardTitle className="text-sm text-card-foreground">{column.title}</CardTitle>
+                <CardDescription className="mt-1 text-xs text-muted-foreground">
                   {column.leads.length} lead{column.leads.length === 1 ? "" : "s"}
                 </CardDescription>
               </div>
-              <span className="text-xs text-zinc-300">
+              <span className="text-xs text-muted-foreground">
                 Rp{column.totalEstimatedValue.toLocaleString("id-ID")}
               </span>
               </div>
@@ -309,18 +325,18 @@ export function LeadBoard({
               {column.leads.map((lead) => (
                 <article
                   key={lead.id}
-                  className="rounded-xl border border-white/10 bg-[#202020] p-3 shadow-none"
+                  className="rounded-xl border border-border bg-muted/40 p-3 shadow-none"
                 >
-                  <p className="text-sm font-medium text-white">{lead.title}</p>
-                  <p className="mt-1 text-xs text-zinc-400">{lead.prospectName}</p>
-                  <div className="mt-3 flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                  <p className="text-sm font-medium text-card-foreground">{lead.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{lead.prospectName}</p>
+                  <div className="mt-3 flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                     <span>{lead.stage}</span>
                     <span>Rp{lead.estimatedValue.toLocaleString("id-ID")}</span>
                   </div>
                 </article>
               ))}
               {column.leads.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-xs text-zinc-500">
+                <p className="rounded-xl border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
                   No leads in this stage yet.
                 </p>
               ) : null}

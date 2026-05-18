@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const createLeadSchema = z.object({
   title: z.string().trim().min(2).max(120),
-  prospectName: z.string().trim().min(2).max(120),
+  clientId: z.string().trim().min(1),
   estimatedValue: z.coerce.number().int().min(0),
   notes: z.string().trim().max(2000).default(""),
   columnId: z.string().trim().min(1),
