@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Separator } from "@/components/ui/separator";
+import { isCompanyNavItemActive } from "@/lib/company-navigation";
 
 type CompanyShellProps = {
   children: ReactNode;
@@ -132,7 +133,11 @@ export function CompanyShell({
               <SidebarMenu>
                 {primaryNav.map((item) => {
                   const Icon = item.icon;
-                  const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  const isActive = isCompanyNavItemActive({
+                    pathname,
+                    href: item.href,
+                    overviewHref,
+                  });
 
                   return (
                     <SidebarMenuItem key={item.href}>
@@ -157,7 +162,11 @@ export function CompanyShell({
                 <SidebarMenu>
                   {secondaryNav.map((item) => {
                     const Icon = item.icon;
-                    const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                    const isActive = isCompanyNavItemActive({
+                      pathname,
+                      href: item.href,
+                      overviewHref,
+                    });
 
                     return (
                       <SidebarMenuItem key={item.href}>
