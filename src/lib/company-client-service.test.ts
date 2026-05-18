@@ -93,7 +93,7 @@ test("createClientWithDependencies creates trimmed client data for owners", asyn
     {
       userId: "user-1",
       companyId: "company-1",
-      payload: { name: " Acme ", email: " sales@acme.test " },
+      payload: { name: " Acme ", companyName: " Acme Corp ", email: " sales@acme.test " },
     },
     deps
   );
@@ -107,7 +107,7 @@ test("createClientWithDependencies creates trimmed client data for owners", asyn
         name: "Acme",
         email: "sales@acme.test",
         phone: "",
-        companyName: "",
+        companyName: "Acme Corp",
         address: "",
         notes: "",
       },

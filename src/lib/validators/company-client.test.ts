@@ -22,19 +22,29 @@ test("createClientSchema trims client fields and defaults optional strings", () 
   });
 });
 
-test("createClientSchema accepts name-only clients", () => {
-  const parsed = createClientSchema.parse({ name: "Acme" });
+test("createClientSchema accepts required fields with optional strings omitted", () => {
+  const parsed = createClientSchema.parse({ name: "Acme", companyName: "Acme Corp" });
 
   assert.deepEqual(parsed, {
     name: "Acme",
     email: "",
     phone: "",
-    companyName: "",
+    companyName: "Acme Corp",
     address: "",
     notes: "",
   });
 });
 
+test("createClientSchema requires company name", () => {
+  assert.throws(() => createClientSchema.parse({ name: "Acme" }));
+});
+
 test("updateClientSchema requires at least one field", () => {
   assert.throws(() => updateClientSchema.parse({}), /At least one field is required/);
+});
+
+test("updateClientSchema accepts partial optional fields", () => {
+  assert.deepEqual(updateClientSchema.parse({ phone: " 08123456789 " }), {
+    phone: "08123456789",
+  });
 });

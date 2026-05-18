@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, FileText, Plus } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
-import { QuotationEditor } from "@/components/company/quotation-editor";
+import { QuotationEditorSheet } from "@/components/company/quotation-editor-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSessionUserId } from "@/lib/api";
@@ -169,12 +169,15 @@ export default async function CompanyQuotationsPage({
                   </span>
                 </div>
 
-                <QuotationEditor
-                  leadId={lead.id}
-                  title={`Create quotation for ${lead.prospectName}`}
-                  description="The first quotation starts a numbered series. Saving again later from the detail page creates the next revision."
-                  submitLabel="Create quotation"
-                />
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    No quotation series yet. Start the first revision to begin a numbered series.
+                  </p>
+                  <QuotationEditorSheet
+                    leadId={lead.id}
+                    prospectName={lead.prospectName}
+                  />
+                </div>
               </section>
             ))
           ) : (
