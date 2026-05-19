@@ -261,6 +261,9 @@ model CompanyQuotation {
   subtotal        Int
   total           Int
   issuedAt        DateTime?
+  sentAt          DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
   createdByUserId String
   company         Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   lead            CompanyLead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
