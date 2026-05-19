@@ -176,6 +176,7 @@ export default async function CompanyQuotationsPage({
                   <QuotationEditorSheet
                     leadId={lead.id}
                     prospectName={lead.prospectName}
+                    leadStage={lead.stage}
                   />
                 </div>
               </section>
