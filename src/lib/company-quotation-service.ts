@@ -20,6 +20,7 @@ const quotationListInclude = {
       title: true,
       prospectName: true,
       estimatedValue: true,
+      stage: true,
     },
   },
   lines: {
