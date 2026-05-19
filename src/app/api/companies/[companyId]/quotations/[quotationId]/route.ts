@@ -5,6 +5,7 @@ import {
   createQuotationRevisionForUser,
   getQuotationDetailForUser,
   isQuotationConflictError,
+  updateQuotationStatusForUser,
 } from "@/lib/company-quotation-service";
 
 export async function GET(
@@ -79,6 +80,66 @@ export async function POST(
       );
     }
 
+    return NextResponse.json(
+      { ok: false, error: { code: "INTERNAL_ERROR", message: "Unexpected server error." } },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ companyId: string; quotationId: string }> }
+) {
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return unauthorized();
+  }
+
+  const { companyId, quotationId } = await params;
+
+  try {
+    const payload = await req.json().catch(() => null);
+    if (payload === null) {
+      return validationError("Invalid JSON payload.");
+    }
+
+    const result = await updateQuotationStatusForUser({
+      userId,
+      companyId,
+      quotationId,
+      payload,
+    });
+
+    if ("error" in result) {
+      if (result.error === "FORBIDDEN") {
+        return forbidden("Only company owner can update quotation status.");
+      }
+      if (result.error === "NOT_LATEST_REVISION") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: {
+              code: "NOT_LATEST_REVISION",
+              message:
+                "Only the latest revision can have its status updated. Open the latest revision and try again.",
+            },
+          },
+          { status: 409 }
+        );
+      }
+      return notFound("Quotation not found.");
+    }
+
+    return NextResponse.json({
+      ok: true,
+      data: result.data,
+      warnings: result.warnings,
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return validationError(error.issues[0]?.message ?? "Invalid status payload.");
+    }
     return NextResponse.json(
       { ok: false, error: { code: "INTERNAL_ERROR", message: "Unexpected server error." } },
       { status: 500 }
