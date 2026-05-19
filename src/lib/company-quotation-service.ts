@@ -1,7 +1,11 @@
-import { Prisma } from "@prisma/client";
+import { CompanyLeadStage, Prisma } from "@prisma/client";
 import { format } from "date-fns";
 import { prisma } from "./prisma.ts";
-import { createQuotationSchema } from "./validators/company-quotation.ts";
+import { findStageColumn } from "./company-lead-service.ts";
+import {
+  createQuotationSchema,
+  updateQuotationStatusSchema,
+} from "./validators/company-quotation.ts";
 
 const QUOTATION_CONFLICT_CODE = "QUOTATION_CONFLICT";
 const MAX_QUOTATION_CONFLICT_RETRIES = 3;
@@ -16,6 +20,7 @@ const quotationListInclude = {
       title: true,
       prospectName: true,
       estimatedValue: true,
+      stage: true,
     },
   },
   lines: {
@@ -70,13 +75,28 @@ type ListQuotationsResult =
       quotations: QuotationListRecord[];
     };
 
+export type QuotationWarning = { code: "WON_COLUMN_MISSING"; message: string };
+
 type CreateQuotationResult =
-  | { data: QuotationDetailRecord }
-  | { error: "FORBIDDEN" | "NOT_FOUND" };
+  | { data: QuotationDetailRecord; warnings: QuotationWarning[] }
+  | {
+      error:
+        | "FORBIDDEN"
+        | "NOT_FOUND"
+        | "LEAD_LOST_REQUIRES_REVIVE"
+        | "NEGOTIATION_COLUMN_NOT_FOUND";
+    };
 
 type CreateQuotationRevisionResult =
-  | { data: QuotationDetailRecord }
-  | { error: "FORBIDDEN" | "NOT_FOUND" | "LEAD_MISMATCH" };
+  | { data: QuotationDetailRecord; warnings: QuotationWarning[] }
+  | {
+      error:
+        | "FORBIDDEN"
+        | "NOT_FOUND"
+        | "LEAD_MISMATCH"
+        | "LEAD_LOST_REQUIRES_REVIVE"
+        | "NEGOTIATION_COLUMN_NOT_FOUND";
+    };
 
 type GetQuotationDetailResult =
   | OwnerCompanyContextError
@@ -177,6 +197,56 @@ export function getIssuedAtForQuotationStatus(
   now: Date
 ) {
   return status === "DRAFT" ? null : now;
+}
+
+type QuotationStatus = "DRAFT" | "SENT" | "APPROVED" | "REJECTED";
+
+export type StatusTransitionResult = {
+  changed: boolean;
+  updates: {
+    status?: QuotationStatus;
+    sentAt?: Date;
+    approvedAt?: Date;
+    rejectedAt?: Date;
+    issuedAt?: Date;
+  };
+};
+
+export function applyStatusTransition(input: {
+  currentStatus: QuotationStatus;
+  nextStatus: QuotationStatus;
+  timestamps: {
+    sentAt: Date | null;
+    approvedAt: Date | null;
+    rejectedAt: Date | null;
+    issuedAt: Date | null;
+  };
+  now: Date;
+}): StatusTransitionResult {
+  if (input.currentStatus === input.nextStatus) {
+    return { changed: false, updates: {} };
+  }
+
+  const updates: StatusTransitionResult["updates"] = {
+    status: input.nextStatus,
+  };
+
+  if (input.nextStatus === "SENT" && !input.timestamps.sentAt) {
+    updates.sentAt = input.now;
+  }
+  if (input.nextStatus === "APPROVED" && !input.timestamps.approvedAt) {
+    updates.approvedAt = input.now;
+  }
+  if (input.nextStatus === "REJECTED" && !input.timestamps.rejectedAt) {
+    updates.rejectedAt = input.now;
+  }
+
+  // Maintain legacy issuedAt: set on first non-DRAFT transition only.
+  if (input.nextStatus !== "DRAFT" && !input.timestamps.issuedAt) {
+    updates.issuedAt = input.now;
+  }
+
+  return { changed: true, updates };
 }
 
 function normalizeErrorTarget(target: unknown) {
@@ -340,6 +410,14 @@ export async function createQuotationForUser(input: {
         },
         select: {
           id: true,
+          stage: true,
+          columnId: true,
+          leadBoardId: true,
+          leadBoard: {
+            select: {
+              columns: { select: { id: true, title: true } },
+            },
+          },
           quotations: {
             orderBy: { revisionNumber: "desc" },
             select: { revisionNumber: true, quotationNumber: true },
@@ -349,6 +427,26 @@ export async function createQuotationForUser(input: {
 
       if (!lead) {
         return { error: "NOT_FOUND" as const };
+      }
+
+      if (lead.stage === CompanyLeadStage.LOST) {
+        if (!parsed.reviveLead) {
+          return { error: "LEAD_LOST_REQUIRES_REVIVE" as const };
+        }
+        const negotiationColumn = findStageColumn(
+          lead.leadBoard.columns,
+          CompanyLeadStage.NEGOTIATION
+        );
+        if (!negotiationColumn) {
+          return { error: "NEGOTIATION_COLUMN_NOT_FOUND" as const };
+        }
+        await tx.companyLead.update({
+          where: { id: lead.id },
+          data: {
+            column: { connect: { id: negotiationColumn.id } },
+            stage: CompanyLeadStage.NEGOTIATION,
+          },
+        });
       }
 
       const issuedAt = new Date();
@@ -408,7 +506,32 @@ export async function createQuotationForUser(input: {
         include: quotationDetailInclude,
       });
 
-      return { data: quotation };
+      const warnings: QuotationWarning[] = [];
+
+      if (status === "APPROVED" && lead.stage !== CompanyLeadStage.WON) {
+        const wonColumn = findStageColumn(
+          lead.leadBoard.columns,
+          CompanyLeadStage.WON
+        );
+        if (wonColumn) {
+          await tx.companyLead.update({
+            where: { id: lead.id },
+            data: {
+              column: { connect: { id: wonColumn.id } },
+              stage: CompanyLeadStage.WON,
+              wonAt: issuedAt,
+            },
+          });
+        } else {
+          warnings.push({
+            code: "WON_COLUMN_MISSING",
+            message:
+              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
+          });
+        }
+      }
+
+      return { data: quotation, warnings };
     })
   );
 
@@ -449,6 +572,43 @@ export async function createQuotationRevisionForUser(input: {
         return { error: "LEAD_MISMATCH" as const };
       }
 
+      const lead = await tx.companyLead.findFirst({
+        where: { id: sourceQuotation.leadId, companyId: context.company.id },
+        select: {
+          id: true,
+          stage: true,
+          columnId: true,
+          leadBoardId: true,
+          leadBoard: {
+            select: { columns: { select: { id: true, title: true } } },
+          },
+        },
+      });
+
+      if (!lead) {
+        return { error: "NOT_FOUND" as const };
+      }
+
+      if (lead.stage === CompanyLeadStage.LOST) {
+        if (!parsed.reviveLead) {
+          return { error: "LEAD_LOST_REQUIRES_REVIVE" as const };
+        }
+        const negotiationColumn = findStageColumn(
+          lead.leadBoard.columns,
+          CompanyLeadStage.NEGOTIATION
+        );
+        if (!negotiationColumn) {
+          return { error: "NEGOTIATION_COLUMN_NOT_FOUND" as const };
+        }
+        await tx.companyLead.update({
+          where: { id: lead.id },
+          data: {
+            column: { connect: { id: negotiationColumn.id } },
+            stage: CompanyLeadStage.NEGOTIATION,
+          },
+        });
+      }
+
       const latestRevision = await tx.companyQuotation.findFirst({
         where: {
           companyId: context.company.id,
@@ -487,7 +647,32 @@ export async function createQuotationRevisionForUser(input: {
         include: quotationDetailInclude,
       });
 
-      return { data: quotation };
+      const warnings: QuotationWarning[] = [];
+
+      if (status === "APPROVED" && lead.stage !== CompanyLeadStage.WON) {
+        const wonColumn = findStageColumn(
+          lead.leadBoard.columns,
+          CompanyLeadStage.WON
+        );
+        if (wonColumn) {
+          await tx.companyLead.update({
+            where: { id: lead.id },
+            data: {
+              column: { connect: { id: wonColumn.id } },
+              stage: CompanyLeadStage.WON,
+              wonAt: issuedAt,
+            },
+          });
+        } else {
+          warnings.push({
+            code: "WON_COLUMN_MISSING",
+            message:
+              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
+          });
+        }
+      }
+
+      return { data: quotation, warnings };
     })
   );
 
@@ -501,6 +686,127 @@ export function isQuotationConflictError(error: unknown) {
     "code" in error &&
     error.code === QUOTATION_CONFLICT_CODE
   );
+}
+
+export type UpdateQuotationStatusResult =
+  | {
+      data: QuotationDetailRecord;
+      warnings: QuotationWarning[];
+    }
+  | { error: "FORBIDDEN" | "NOT_FOUND" | "NOT_LATEST_REVISION" };
+
+export async function updateQuotationStatusForUser(input: {
+  userId: string;
+  companyId: string;
+  quotationId: string;
+  payload: unknown;
+}): Promise<UpdateQuotationStatusResult> {
+  const parsed = updateQuotationStatusSchema.parse(input.payload);
+  const context = await getOwnerCompanyContext(input.userId, input.companyId);
+  if ("error" in context) {
+    return { error: context.error };
+  }
+
+  const now = new Date();
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.companyQuotation.findFirst({
+      where: { id: input.quotationId, companyId: context.company.id },
+      select: {
+        id: true,
+        leadId: true,
+        quotationNumber: true,
+        revisionNumber: true,
+        status: true,
+        sentAt: true,
+        approvedAt: true,
+        rejectedAt: true,
+        issuedAt: true,
+      },
+    });
+    if (!existing) {
+      return { error: "NOT_FOUND" as const };
+    }
+
+    const latest = await tx.companyQuotation.findFirst({
+      where: {
+        companyId: context.company.id,
+        leadId: existing.leadId,
+        quotationNumber: existing.quotationNumber,
+      },
+      orderBy: { revisionNumber: "desc" },
+      select: { id: true },
+    });
+    if (latest?.id !== existing.id) {
+      return { error: "NOT_LATEST_REVISION" as const };
+    }
+
+    const transition = applyStatusTransition({
+      currentStatus: existing.status,
+      nextStatus: parsed.status,
+      timestamps: {
+        sentAt: existing.sentAt,
+        approvedAt: existing.approvedAt,
+        rejectedAt: existing.rejectedAt,
+        issuedAt: existing.issuedAt,
+      },
+      now,
+    });
+
+    const warnings: QuotationWarning[] = [];
+
+    if (!transition.changed) {
+      const current = await tx.companyQuotation.findFirst({
+        where: { id: existing.id },
+        include: quotationDetailInclude,
+      });
+      return { data: current!, warnings };
+    }
+
+    const updated = await tx.companyQuotation.update({
+      where: { id: existing.id },
+      data: transition.updates,
+      include: quotationDetailInclude,
+    });
+
+    if (parsed.status === "APPROVED") {
+      const lead = await tx.companyLead.findFirst({
+        where: { id: existing.leadId, companyId: context.company.id },
+        select: {
+          id: true,
+          stage: true,
+          leadBoardId: true,
+          leadBoard: {
+            select: {
+              columns: { select: { id: true, title: true } },
+            },
+          },
+        },
+      });
+
+      if (lead && lead.stage !== CompanyLeadStage.WON) {
+        const wonColumn = findStageColumn(lead.leadBoard.columns, CompanyLeadStage.WON);
+        if (wonColumn) {
+          await tx.companyLead.update({
+            where: { id: lead.id },
+            data: {
+              column: { connect: { id: wonColumn.id } },
+              stage: CompanyLeadStage.WON,
+              wonAt: now,
+            },
+          });
+        } else {
+          warnings.push({
+            code: "WON_COLUMN_MISSING",
+            message:
+              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
+          });
+        }
+      }
+    }
+
+    return { data: updated, warnings };
+  });
 }
 
 export async function getQuotationDetailForUser(input: {

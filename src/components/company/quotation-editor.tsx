@@ -18,6 +18,8 @@ type QuotationEditorProps = {
   description?: string;
   submitLabel?: string;
   bare?: boolean;
+  hideStatusField?: boolean;
+  reviveLead?: boolean;
 };
 
 const emptyLine = {
@@ -35,6 +37,8 @@ export function QuotationEditor({
   description = "Build line items and create a new quotation revision.",
   submitLabel = "Save quotation",
   bare = false,
+  hideStatusField = false,
+  reviveLead = false,
 }: QuotationEditorProps) {
   const router = useRouter();
   const params = useParams<{ companyId: string }>();
@@ -67,6 +71,7 @@ export function QuotationEditor({
         leadId,
         status,
         lines,
+        reviveLead,
       }),
     });
     const result = await response.json().catch(() => null);
@@ -103,20 +108,22 @@ export function QuotationEditor({
             ) : null}
           </div>
         ) : null}
-        <label className="grid gap-1 text-sm">
-          <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Status</span>
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as QuotationStatus)}
-            disabled={isBusy}
-            className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
-          >
-            <option value="DRAFT">Draft</option>
-            <option value="SENT">Sent</option>
-            <option value="APPROVED">Approved</option>
-            <option value="REJECTED">Rejected</option>
-          </select>
-        </label>
+        {!hideStatusField ? (
+          <label className="grid gap-1 text-sm">
+            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Status</span>
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value as QuotationStatus)}
+              disabled={isBusy}
+              className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
+            >
+              <option value="DRAFT">Draft</option>
+              <option value="SENT">Sent</option>
+              <option value="APPROVED">Approved</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+          </label>
+        ) : null}
       </div>
 
       <div className="mt-5 space-y-3">

@@ -118,3 +118,72 @@ test("retryOnQuotationConflict throws a controlled conflict after exhausting ret
       error.code === "QUOTATION_CONFLICT"
   );
 });
+
+import { applyStatusTransition } from "./company-quotation-service.ts";
+
+test("applyStatusTransition no-op when status equals current", () => {
+  const now = new Date("2026-05-19T10:00:00.000Z");
+  const result = applyStatusTransition({
+    currentStatus: "DRAFT",
+    nextStatus: "DRAFT",
+    timestamps: { sentAt: null, approvedAt: null, rejectedAt: null, issuedAt: null },
+    now,
+  });
+  assert.equal(result.changed, false);
+  assert.deepEqual(result.updates, {});
+});
+
+test("applyStatusTransition DRAFT -> SENT sets sentAt and issuedAt", () => {
+  const now = new Date("2026-05-19T10:00:00.000Z");
+  const result = applyStatusTransition({
+    currentStatus: "DRAFT",
+    nextStatus: "SENT",
+    timestamps: { sentAt: null, approvedAt: null, rejectedAt: null, issuedAt: null },
+    now,
+  });
+  assert.equal(result.changed, true);
+  assert.equal(result.updates.status, "SENT");
+  assert.deepEqual(result.updates.sentAt, now);
+  assert.deepEqual(result.updates.issuedAt, now);
+});
+
+test("applyStatusTransition preserves existing first-transition timestamps", () => {
+  const earlier = new Date("2026-05-10T00:00:00.000Z");
+  const now = new Date("2026-05-19T10:00:00.000Z");
+  const result = applyStatusTransition({
+    currentStatus: "SENT",
+    nextStatus: "SENT",
+    timestamps: { sentAt: earlier, approvedAt: null, rejectedAt: null, issuedAt: earlier },
+    now,
+  });
+  assert.equal(result.changed, false);
+});
+
+test("applyStatusTransition SENT -> APPROVED sets approvedAt but keeps sentAt", () => {
+  const earlier = new Date("2026-05-10T00:00:00.000Z");
+  const now = new Date("2026-05-19T10:00:00.000Z");
+  const result = applyStatusTransition({
+    currentStatus: "SENT",
+    nextStatus: "APPROVED",
+    timestamps: { sentAt: earlier, approvedAt: null, rejectedAt: null, issuedAt: earlier },
+    now,
+  });
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.updates.approvedAt, now);
+  assert.equal("sentAt" in result.updates, false);
+});
+
+test("applyStatusTransition APPROVED -> DRAFT changes status but no new timestamps", () => {
+  const earlier = new Date("2026-05-10T00:00:00.000Z");
+  const now = new Date("2026-05-19T10:00:00.000Z");
+  const result = applyStatusTransition({
+    currentStatus: "APPROVED",
+    nextStatus: "DRAFT",
+    timestamps: { sentAt: earlier, approvedAt: earlier, rejectedAt: null, issuedAt: earlier },
+    now,
+  });
+  assert.equal(result.changed, true);
+  assert.equal(result.updates.status, "DRAFT");
+  assert.equal("approvedAt" in result.updates, false);
+  assert.equal("sentAt" in result.updates, false);
+});

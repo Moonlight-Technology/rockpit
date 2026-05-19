@@ -119,9 +119,22 @@ export default async function CompanyQuotationsPage({
                           {quotation.quotationNumber} · Rev {quotation.revisionNumber}
                         </p>
                       </div>
-                      <span className="rounded-full border border-border bg-background px-3 py-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                        {quotation.status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${
+                            quotation.lead.stage === "WON"
+                              ? "border-emerald-300/30 bg-emerald-500/10 text-emerald-200"
+                              : quotation.lead.stage === "LOST"
+                              ? "border-rose-300/30 bg-rose-500/10 text-rose-200"
+                              : "border-border bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {quotation.lead.stage}
+                        </span>
+                        <span className="rounded-full border border-border bg-background px-3 py-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                          {quotation.status}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                       <span>{quotation.lead.title}</span>
@@ -176,6 +189,7 @@ export default async function CompanyQuotationsPage({
                   <QuotationEditorSheet
                     leadId={lead.id}
                     prospectName={lead.prospectName}
+                    leadStage={lead.stage}
                   />
                 </div>
               </section>
