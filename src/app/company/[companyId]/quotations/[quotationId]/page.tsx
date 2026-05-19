@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { ArrowLeft, Printer } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { QuotationEditor } from "@/components/company/quotation-editor";
+import { QuotationStatusControl } from "@/components/company/quotation-status-control";
 import { getSessionUserId } from "@/lib/api";
 import { getQuotationDetailForUser } from "@/lib/company-quotation-service";
 
@@ -24,6 +25,9 @@ export default async function CompanyQuotationDetailPage({
   const quotationResult = result;
 
   const { quotation, revisions } = quotationResult;
+  const isLatestRevision =
+    revisions.length === 0 ||
+    quotation.revisionNumber === revisions[0].revisionNumber;
 
   return (
     <div className="space-y-6 print:space-y-0">
@@ -50,13 +54,27 @@ export default async function CompanyQuotationDetailPage({
               </p>
             </div>
           </div>
-          <div className="rounded-full border border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-2">
-              <Printer className="size-4" />
-              Use browser print for export
-            </span>
+          <div className="flex flex-col items-end gap-3">
+            <div className="rounded-full border border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-2">
+                <Printer className="size-4" />
+                Use browser print for export
+              </span>
+            </div>
+            <QuotationStatusControl
+              quotationId={quotation.id}
+              currentStatus={quotation.status}
+              prospectName={quotation.lead.prospectName}
+              quotationLabel={`${quotation.quotationNumber} rev ${quotation.revisionNumber}`}
+              disabled={!isLatestRevision}
+            />
           </div>
         </div>
+        {!isLatestRevision ? (
+          <div className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+            Viewing a historical revision. Open the latest revision to change status or create another revision.
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.92)_0%,rgba(248,250,252,1)_18%,rgba(255,255,255,1)_100%)] p-4 shadow-2xl shadow-black/20 sm:p-6 print:rounded-none print:border-0 print:bg-white print:p-0 print:shadow-none">
@@ -152,19 +170,26 @@ export default async function CompanyQuotationDetailPage({
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] print:hidden">
-        <QuotationEditor
-          quotationId={quotation.id}
-          leadId={quotation.lead.id}
-          initialStatus={quotation.status}
-          initialLines={quotation.lines.map((line) => ({
-            description: line.description,
-            quantity: line.quantity,
-            unitPrice: line.unitPrice,
-          }))}
-          title="Create next revision"
-          description="Adjust pricing, line items, or status. Saving here creates the next revision number in the same quotation series."
-          submitLabel="Create revision"
-        />
+        {isLatestRevision ? (
+          <QuotationEditor
+            quotationId={quotation.id}
+            leadId={quotation.lead.id}
+            initialStatus="DRAFT"
+            initialLines={quotation.lines.map((line) => ({
+              description: line.description,
+              quantity: line.quantity,
+              unitPrice: line.unitPrice,
+            }))}
+            title="Create next revision"
+            description="Adjust pricing or line items. A new revision is always created as a Draft — use the status control above to change status of the current revision."
+            submitLabel="Create revision"
+            hideStatusField
+          />
+        ) : (
+          <div className="rounded-3xl border border-border bg-muted/30 p-6 text-sm text-muted-foreground">
+            Open the latest revision to create another revision.
+          </div>
+        )}
 
         <aside className="rounded-3xl border border-border bg-card p-5 text-card-foreground">
           <h2 className="text-lg font-semibold text-card-foreground">Revision history</h2>
