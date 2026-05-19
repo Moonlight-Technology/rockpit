@@ -179,6 +179,56 @@ export function getIssuedAtForQuotationStatus(
   return status === "DRAFT" ? null : now;
 }
 
+type QuotationStatus = "DRAFT" | "SENT" | "APPROVED" | "REJECTED";
+
+export type StatusTransitionResult = {
+  changed: boolean;
+  updates: {
+    status?: QuotationStatus;
+    sentAt?: Date;
+    approvedAt?: Date;
+    rejectedAt?: Date;
+    issuedAt?: Date;
+  };
+};
+
+export function applyStatusTransition(input: {
+  currentStatus: QuotationStatus;
+  nextStatus: QuotationStatus;
+  timestamps: {
+    sentAt: Date | null;
+    approvedAt: Date | null;
+    rejectedAt: Date | null;
+    issuedAt: Date | null;
+  };
+  now: Date;
+}): StatusTransitionResult {
+  if (input.currentStatus === input.nextStatus) {
+    return { changed: false, updates: {} };
+  }
+
+  const updates: StatusTransitionResult["updates"] = {
+    status: input.nextStatus,
+  };
+
+  if (input.nextStatus === "SENT" && !input.timestamps.sentAt) {
+    updates.sentAt = input.now;
+  }
+  if (input.nextStatus === "APPROVED" && !input.timestamps.approvedAt) {
+    updates.approvedAt = input.now;
+  }
+  if (input.nextStatus === "REJECTED" && !input.timestamps.rejectedAt) {
+    updates.rejectedAt = input.now;
+  }
+
+  // Maintain legacy issuedAt: set on first non-DRAFT transition only.
+  if (input.nextStatus !== "DRAFT" && !input.timestamps.issuedAt) {
+    updates.issuedAt = input.now;
+  }
+
+  return { changed: true, updates };
+}
+
 function normalizeErrorTarget(target: unknown) {
   if (Array.isArray(target)) {
     return target.map((item) => String(item));
