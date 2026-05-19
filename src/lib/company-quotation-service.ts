@@ -1,7 +1,11 @@
-import { Prisma } from "@prisma/client";
+import { CompanyLeadStage, Prisma } from "@prisma/client";
 import { format } from "date-fns";
 import { prisma } from "./prisma.ts";
-import { createQuotationSchema } from "./validators/company-quotation.ts";
+import { findStageColumn } from "./company-lead-service.ts";
+import {
+  createQuotationSchema,
+  updateQuotationStatusSchema,
+} from "./validators/company-quotation.ts";
 
 const QUOTATION_CONFLICT_CODE = "QUOTATION_CONFLICT";
 const MAX_QUOTATION_CONFLICT_RETRIES = 3;
@@ -551,6 +555,129 @@ export function isQuotationConflictError(error: unknown) {
     "code" in error &&
     error.code === QUOTATION_CONFLICT_CODE
   );
+}
+
+export type QuotationWarning = { code: "WON_COLUMN_MISSING"; message: string };
+
+export type UpdateQuotationStatusResult =
+  | {
+      data: QuotationDetailRecord;
+      warnings: QuotationWarning[];
+    }
+  | { error: "FORBIDDEN" | "NOT_FOUND" | "NOT_LATEST_REVISION" };
+
+export async function updateQuotationStatusForUser(input: {
+  userId: string;
+  companyId: string;
+  quotationId: string;
+  payload: unknown;
+}): Promise<UpdateQuotationStatusResult> {
+  const parsed = updateQuotationStatusSchema.parse(input.payload);
+  const context = await getOwnerCompanyContext(input.userId, input.companyId);
+  if ("error" in context) {
+    return { error: context.error };
+  }
+
+  const now = new Date();
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.companyQuotation.findFirst({
+      where: { id: input.quotationId, companyId: context.company.id },
+      select: {
+        id: true,
+        leadId: true,
+        quotationNumber: true,
+        revisionNumber: true,
+        status: true,
+        sentAt: true,
+        approvedAt: true,
+        rejectedAt: true,
+        issuedAt: true,
+      },
+    });
+    if (!existing) {
+      return { error: "NOT_FOUND" as const };
+    }
+
+    const latest = await tx.companyQuotation.findFirst({
+      where: {
+        companyId: context.company.id,
+        leadId: existing.leadId,
+        quotationNumber: existing.quotationNumber,
+      },
+      orderBy: { revisionNumber: "desc" },
+      select: { id: true },
+    });
+    if (latest?.id !== existing.id) {
+      return { error: "NOT_LATEST_REVISION" as const };
+    }
+
+    const transition = applyStatusTransition({
+      currentStatus: existing.status,
+      nextStatus: parsed.status,
+      timestamps: {
+        sentAt: existing.sentAt,
+        approvedAt: existing.approvedAt,
+        rejectedAt: existing.rejectedAt,
+        issuedAt: existing.issuedAt,
+      },
+      now,
+    });
+
+    const warnings: QuotationWarning[] = [];
+
+    if (!transition.changed) {
+      const current = await tx.companyQuotation.findFirst({
+        where: { id: existing.id },
+        include: quotationDetailInclude,
+      });
+      return { data: current!, warnings };
+    }
+
+    const updated = await tx.companyQuotation.update({
+      where: { id: existing.id },
+      data: transition.updates,
+      include: quotationDetailInclude,
+    });
+
+    if (parsed.status === "APPROVED") {
+      const lead = await tx.companyLead.findFirst({
+        where: { id: existing.leadId, companyId: context.company.id },
+        select: {
+          id: true,
+          stage: true,
+          leadBoardId: true,
+          leadBoard: {
+            select: {
+              columns: { select: { id: true, title: true } },
+            },
+          },
+        },
+      });
+
+      if (lead && lead.stage !== CompanyLeadStage.WON) {
+        const wonColumn = findStageColumn(lead.leadBoard.columns, CompanyLeadStage.WON);
+        if (wonColumn) {
+          await tx.companyLead.update({
+            where: { id: lead.id },
+            data: {
+              column: { connect: { id: wonColumn.id } },
+              stage: CompanyLeadStage.WON,
+              wonAt: now,
+            },
+          });
+        } else {
+          warnings.push({
+            code: "WON_COLUMN_MISSING",
+            message:
+              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
+          });
+        }
+      }
+    }
+
+    return { data: updated, warnings };
+  });
 }
 
 export async function getQuotationDetailForUser(input: {
