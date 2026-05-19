@@ -80,6 +80,15 @@ function getStageFromColumnTitle(title: string) {
   }
 }
 
+export function findStageColumn(
+  columns: Array<{ id: string; title: string }>,
+  stage: CompanyLeadStage
+): { id: string; title: string } | null {
+  return (
+    columns.find((column) => getStageFromColumnTitle(column.title) === stage) ?? null
+  );
+}
+
 async function getPrimaryLeadBoardContext(
   userId: string,
   companyId: string
