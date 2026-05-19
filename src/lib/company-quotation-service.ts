@@ -74,13 +74,28 @@ type ListQuotationsResult =
       quotations: QuotationListRecord[];
     };
 
+export type QuotationWarning = { code: "WON_COLUMN_MISSING"; message: string };
+
 type CreateQuotationResult =
-  | { data: QuotationDetailRecord }
-  | { error: "FORBIDDEN" | "NOT_FOUND" };
+  | { data: QuotationDetailRecord; warnings: QuotationWarning[] }
+  | {
+      error:
+        | "FORBIDDEN"
+        | "NOT_FOUND"
+        | "LEAD_LOST_REQUIRES_REVIVE"
+        | "NEGOTIATION_COLUMN_NOT_FOUND";
+    };
 
 type CreateQuotationRevisionResult =
-  | { data: QuotationDetailRecord }
-  | { error: "FORBIDDEN" | "NOT_FOUND" | "LEAD_MISMATCH" };
+  | { data: QuotationDetailRecord; warnings: QuotationWarning[] }
+  | {
+      error:
+        | "FORBIDDEN"
+        | "NOT_FOUND"
+        | "LEAD_MISMATCH"
+        | "LEAD_LOST_REQUIRES_REVIVE"
+        | "NEGOTIATION_COLUMN_NOT_FOUND";
+    };
 
 type GetQuotationDetailResult =
   | OwnerCompanyContextError
@@ -394,6 +409,14 @@ export async function createQuotationForUser(input: {
         },
         select: {
           id: true,
+          stage: true,
+          columnId: true,
+          leadBoardId: true,
+          leadBoard: {
+            select: {
+              columns: { select: { id: true, title: true } },
+            },
+          },
           quotations: {
             orderBy: { revisionNumber: "desc" },
             select: { revisionNumber: true, quotationNumber: true },
@@ -403,6 +426,26 @@ export async function createQuotationForUser(input: {
 
       if (!lead) {
         return { error: "NOT_FOUND" as const };
+      }
+
+      if (lead.stage === CompanyLeadStage.LOST) {
+        if (!parsed.reviveLead) {
+          return { error: "LEAD_LOST_REQUIRES_REVIVE" as const };
+        }
+        const negotiationColumn = findStageColumn(
+          lead.leadBoard.columns,
+          CompanyLeadStage.NEGOTIATION
+        );
+        if (!negotiationColumn) {
+          return { error: "NEGOTIATION_COLUMN_NOT_FOUND" as const };
+        }
+        await tx.companyLead.update({
+          where: { id: lead.id },
+          data: {
+            column: { connect: { id: negotiationColumn.id } },
+            stage: CompanyLeadStage.NEGOTIATION,
+          },
+        });
       }
 
       const issuedAt = new Date();
@@ -462,7 +505,32 @@ export async function createQuotationForUser(input: {
         include: quotationDetailInclude,
       });
 
-      return { data: quotation };
+      const warnings: QuotationWarning[] = [];
+
+      if (status === "APPROVED" && lead.stage !== CompanyLeadStage.WON) {
+        const wonColumn = findStageColumn(
+          lead.leadBoard.columns,
+          CompanyLeadStage.WON
+        );
+        if (wonColumn) {
+          await tx.companyLead.update({
+            where: { id: lead.id },
+            data: {
+              column: { connect: { id: wonColumn.id } },
+              stage: CompanyLeadStage.WON,
+              wonAt: issuedAt,
+            },
+          });
+        } else {
+          warnings.push({
+            code: "WON_COLUMN_MISSING",
+            message:
+              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
+          });
+        }
+      }
+
+      return { data: quotation, warnings };
     })
   );
 
@@ -503,6 +571,43 @@ export async function createQuotationRevisionForUser(input: {
         return { error: "LEAD_MISMATCH" as const };
       }
 
+      const lead = await tx.companyLead.findFirst({
+        where: { id: sourceQuotation.leadId, companyId: context.company.id },
+        select: {
+          id: true,
+          stage: true,
+          columnId: true,
+          leadBoardId: true,
+          leadBoard: {
+            select: { columns: { select: { id: true, title: true } } },
+          },
+        },
+      });
+
+      if (!lead) {
+        return { error: "NOT_FOUND" as const };
+      }
+
+      if (lead.stage === CompanyLeadStage.LOST) {
+        if (!parsed.reviveLead) {
+          return { error: "LEAD_LOST_REQUIRES_REVIVE" as const };
+        }
+        const negotiationColumn = findStageColumn(
+          lead.leadBoard.columns,
+          CompanyLeadStage.NEGOTIATION
+        );
+        if (!negotiationColumn) {
+          return { error: "NEGOTIATION_COLUMN_NOT_FOUND" as const };
+        }
+        await tx.companyLead.update({
+          where: { id: lead.id },
+          data: {
+            column: { connect: { id: negotiationColumn.id } },
+            stage: CompanyLeadStage.NEGOTIATION,
+          },
+        });
+      }
+
       const latestRevision = await tx.companyQuotation.findFirst({
         where: {
           companyId: context.company.id,
@@ -541,7 +646,32 @@ export async function createQuotationRevisionForUser(input: {
         include: quotationDetailInclude,
       });
 
-      return { data: quotation };
+      const warnings: QuotationWarning[] = [];
+
+      if (status === "APPROVED" && lead.stage !== CompanyLeadStage.WON) {
+        const wonColumn = findStageColumn(
+          lead.leadBoard.columns,
+          CompanyLeadStage.WON
+        );
+        if (wonColumn) {
+          await tx.companyLead.update({
+            where: { id: lead.id },
+            data: {
+              column: { connect: { id: wonColumn.id } },
+              stage: CompanyLeadStage.WON,
+              wonAt: issuedAt,
+            },
+          });
+        } else {
+          warnings.push({
+            code: "WON_COLUMN_MISSING",
+            message:
+              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
+          });
+        }
+      }
+
+      return { data: quotation, warnings };
     })
   );
 
@@ -556,8 +686,6 @@ export function isQuotationConflictError(error: unknown) {
     error.code === QUOTATION_CONFLICT_CODE
   );
 }
-
-export type QuotationWarning = { code: "WON_COLUMN_MISSING"; message: string };
 
 export type UpdateQuotationStatusResult =
   | {
