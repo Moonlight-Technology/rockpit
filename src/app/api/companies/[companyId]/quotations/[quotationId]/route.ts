@@ -59,10 +59,39 @@ export async function POST(
       if (result.error === "LEAD_MISMATCH") {
         return validationError("Revision lead does not match the original quotation.");
       }
+      if (result.error === "LEAD_LOST_REQUIRES_REVIVE") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: {
+              code: "LEAD_LOST_REQUIRES_REVIVE",
+              message:
+                "Lead is currently marked Lost. Confirm to revive it before creating a revision.",
+            },
+          },
+          { status: 409 }
+        );
+      }
+      if (result.error === "NEGOTIATION_COLUMN_NOT_FOUND") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: {
+              code: "NEGOTIATION_COLUMN_NOT_FOUND",
+              message:
+                "Cannot revive the lead because there is no 'Negotiation' column on the board.",
+            },
+          },
+          { status: 400 }
+        );
+      }
       return notFound("Quotation not found.");
     }
 
-    return NextResponse.json({ ok: true, data: result.data }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, data: result.data, warnings: result.warnings },
+      { status: 201 }
+    );
   } catch (error) {
     if (error instanceof ZodError) {
       return validationError(error.issues[0]?.message ?? "Invalid quotation payload.");
