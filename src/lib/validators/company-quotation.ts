@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const quotationStatusSchema = z.enum(["DRAFT", "SENT", "APPROVED", "REJECTED"]);
+export const quotationDiscountTypeSchema = z.enum(["FIXED", "PERCENTAGE"]);
 
 export const quotationLineSchema = z.object({
   description: z.string().trim().min(1).max(200),
@@ -8,12 +9,24 @@ export const quotationLineSchema = z.object({
   unitPrice: z.coerce.number().int().min(0),
 });
 
-export const createQuotationSchema = z.object({
-  leadId: z.string().trim().min(1),
-  lines: z.array(quotationLineSchema).min(1),
-  status: quotationStatusSchema.default("DRAFT"),
-  reviveLead: z.boolean().default(false),
-});
+export const createQuotationSchema = z
+  .object({
+    leadId: z.string().trim().min(1),
+    lines: z.array(quotationLineSchema).min(1),
+    status: quotationStatusSchema.default("DRAFT"),
+    reviveLead: z.boolean().default(false),
+    discountType: quotationDiscountTypeSchema.default("FIXED"),
+    discountValue: z.coerce.number().int().min(0).default(0),
+  })
+  .superRefine((value, ctx) => {
+    if (value.discountType === "PERCENTAGE" && value.discountValue > 100) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discountValue"],
+        message: "Percentage discount must be between 0 and 100.",
+      });
+    }
+  });
 
 export const updateQuotationStatusSchema = z
   .object({

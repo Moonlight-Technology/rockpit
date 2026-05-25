@@ -192,6 +192,30 @@ export function nextQuotationSequence(input: {
   return maxSequence + 1;
 }
 
+type DiscountType = "FIXED" | "PERCENTAGE";
+
+type QuotationLineCalculationInput = {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+};
+
+export function calculateQuotationTotals(input: {
+  lines: QuotationLineCalculationInput[];
+  discountType: DiscountType;
+  discountValue: number;
+}) {
+  const subtotal = input.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+  const rawDiscount =
+    input.discountType === "PERCENTAGE"
+      ? Math.floor((subtotal * input.discountValue) / 100)
+      : input.discountValue;
+  const discountAmount = Math.min(Math.max(rawDiscount, 0), subtotal);
+  const total = Math.max(subtotal - discountAmount, 0);
+
+  return { subtotal, discountAmount, total };
+}
+
 export function getIssuedAtForQuotationStatus(
   status: "DRAFT" | "SENT" | "APPROVED" | "REJECTED",
   now: Date
@@ -364,10 +388,6 @@ async function getOwnerCompanyContext(
   return { company };
 }
 
-function sumQuotationLines(lines: Array<{ quantity: number; unitPrice: number }>) {
-  return lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
-}
-
 export async function listQuotationsForUser(
   userId: string,
   companyId: string
@@ -478,7 +498,11 @@ export async function createQuotationForUser(input: {
         });
       }
 
-      const subtotal = sumQuotationLines(parsed.lines);
+      const totals = calculateQuotationTotals({
+        lines: parsed.lines,
+        discountType: parsed.discountType,
+        discountValue: parsed.discountValue,
+      });
       const status = parsed.status;
       const issuedQuotationAt = getIssuedAtForQuotationStatus(status, issuedAt);
 
@@ -489,8 +513,11 @@ export async function createQuotationForUser(input: {
           quotationNumber,
           revisionNumber,
           status,
-          subtotal,
-          total: subtotal,
+          subtotal: totals.subtotal,
+          discountType: parsed.discountType,
+          discountValue: parsed.discountValue,
+          discountAmount: totals.discountAmount,
+          total: totals.total,
           issuedAt: issuedQuotationAt,
           createdByUserId: input.userId,
           lines: {
@@ -618,7 +645,11 @@ export async function createQuotationRevisionForUser(input: {
         select: { revisionNumber: true },
       });
 
-      const subtotal = sumQuotationLines(parsed.lines);
+      const totals = calculateQuotationTotals({
+        lines: parsed.lines,
+        discountType: parsed.discountType,
+        discountValue: parsed.discountValue,
+      });
       const issuedAt = new Date();
       const status = parsed.status;
       const issuedQuotationAt = getIssuedAtForQuotationStatus(status, issuedAt);
@@ -630,8 +661,11 @@ export async function createQuotationRevisionForUser(input: {
           quotationNumber: sourceQuotation.quotationNumber,
           revisionNumber: nextRevisionNumber(latestRevision ? [latestRevision] : []),
           status,
-          subtotal,
-          total: subtotal,
+          subtotal: totals.subtotal,
+          discountType: parsed.discountType,
+          discountValue: parsed.discountValue,
+          discountAmount: totals.discountAmount,
+          total: totals.total,
           issuedAt: issuedQuotationAt,
           createdByUserId: input.userId,
           lines: {

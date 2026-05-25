@@ -160,6 +160,14 @@ export default async function CompanyQuotationDetailPage({
                 <dt>Subtotal</dt>
                 <dd>Rp{quotation.subtotal.toLocaleString("id-ID")}</dd>
               </div>
+              <div className="flex items-center justify-between text-slate-600">
+                <dt>
+                  {quotation.discountType === "PERCENTAGE"
+                    ? `Discount (${quotation.discountValue}%)`
+                    : "Discount (Rp)"}
+                </dt>
+                <dd>Rp{quotation.discountAmount.toLocaleString("id-ID")}</dd>
+              </div>
               <div className="flex items-center justify-between text-lg font-semibold text-slate-950">
                 <dt>Total</dt>
                 <dd>Rp{quotation.total.toLocaleString("id-ID")}</dd>
@@ -175,13 +183,15 @@ export default async function CompanyQuotationDetailPage({
             quotationId={quotation.id}
             leadId={quotation.lead.id}
             initialStatus="DRAFT"
+            initialDiscountType={quotation.discountType}
+            initialDiscountValue={quotation.discountValue}
             initialLines={quotation.lines.map((line) => ({
               description: line.description,
               quantity: line.quantity,
               unitPrice: line.unitPrice,
             }))}
             title="Create next revision"
-            description="Adjust pricing or line items. A new revision is always created as a Draft — use the status control above to change status of the current revision."
+            description="Adjust pricing, line items, or discount. A new revision is always created as a Draft — use the status control above to change status of the current revision."
             submitLabel="Create revision"
             hideStatusField
           />

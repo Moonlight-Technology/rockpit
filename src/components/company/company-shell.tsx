@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ArrowLeft,
+  Banknote,
   Building2,
   FileText,
   FolderOpen,
@@ -62,6 +63,7 @@ export function CompanyShell({
   const overviewHref = `/company/${company.id}`;
   const clientsHref = `/company/${company.id}/clients`;
   const leadsHref = `/company/${company.id}/leads`;
+  const expensesHref = `/company/${company.id}/expenses`;
   const projectsHref = `/company/${company.id}/projects`;
   const quotationsHref = `/company/${company.id}/quotations`;
   const settingsHref = `/company/${company.id}/settings`;
@@ -76,6 +78,9 @@ export function CompanyShell({
           ? [{ href: clientsHref, label: "Client", icon: UsersRound }]
           : []),
         { href: leadsHref, label: "Leads", icon: KanbanSquare },
+        ...(canManageSettings
+          ? [{ href: expensesHref, label: "Expense Manager", icon: Banknote }]
+          : []),
         ...(canManageSettings
           ? [{ href: projectsHref, label: "Projects", icon: FolderOpen }]
           : []),

@@ -32,6 +32,11 @@ enum CompanyQuotationStatus {
   REJECTED
 }
 
+enum CompanyQuotationDiscountType {
+  FIXED
+  PERCENTAGE
+}
+
 enum WorkspaceType {
   PERSONAL
   COMPANY
@@ -164,6 +169,12 @@ model Company {
   leads           CompanyLead[]
   quotations      CompanyQuotation[]
   boards          Board[]
+  moneyAccounts   CompanyMoneyAccount[]
+  moneyCategories CompanyMoneyCategory[]
+  moneyTransactions CompanyMoneyTransaction[]
+  moneyBudgetPlans CompanyMoneyBudgetPlan[]
+  moneyWishlistItems CompanyMoneyWishlistItem[]
+  moneyReceivables CompanyMoneyReceivable[]
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
@@ -252,25 +263,28 @@ model CompanyLead {
 }
 
 model CompanyQuotation {
-  id              String                 @id @default(cuid())
+  id              String                       @id @default(cuid())
   companyId       String
   leadId          String
   quotationNumber String
   revisionNumber  Int
-  status          CompanyQuotationStatus @default(DRAFT)
+  status          CompanyQuotationStatus      @default(DRAFT)
   subtotal        Int
+  discountType    CompanyQuotationDiscountType @default(FIXED)
+  discountValue   Int                         @default(0)
+  discountAmount  Int                         @default(0)
   total           Int
   issuedAt        DateTime?
   sentAt          DateTime?
   approvedAt      DateTime?
   rejectedAt      DateTime?
   createdByUserId String
-  company         Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  lead            CompanyLead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  createdBy       User                   @relation("CompanyQuotationCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  company         Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead            CompanyLead                 @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy       User                        @relation("CompanyQuotationCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
   lines           CompanyQuotationLine[]
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
 
   @@unique([leadId, revisionNumber])
   @@unique([companyId, quotationNumber, revisionNumber])
@@ -528,6 +542,153 @@ model MoneyReceivablePayment {
   transaction   MoneyTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
+
+  @@index([receivableId, paidAt])
+}
+
+model CompanyMoneyAccount {
+  id                String                    @id @default(cuid())
+  companyId         String
+  name              String
+  type              MoneyAccountType          @default(OTHER)
+  company           Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions      CompanyMoneyTransaction[] @relation("CompanyMoneyTransactionAccount")
+  outgoingTransfers CompanyMoneyTransaction[] @relation("CompanyMoneyTransactionFromAccount")
+  incomingTransfers CompanyMoneyTransaction[] @relation("CompanyMoneyTransactionToAccount")
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  @@index([companyId, type])
+}
+
+model CompanyMoneyCategory {
+  id            String                             @id @default(cuid())
+  companyId     String
+  name          String
+  kind          MoneyCategoryKind                  @default(BOTH)
+  isDefault     Boolean                            @default(false)
+  isActive      Boolean                            @default(true)
+  company       Company                            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions  CompanyMoneyTransaction[]
+  budgetBuckets CompanyMoneyBudgetBucketCategory[]
+  createdAt     DateTime                           @default(now())
+  updatedAt     DateTime                           @updatedAt
+
+  @@unique([companyId, name])
+  @@index([companyId, isActive])
+}
+
+model CompanyMoneyTransaction {
+  id                String                     @id @default(cuid())
+  companyId         String
+  type              MoneyTransactionType
+  amount            Int
+  categoryId        String?
+  accountId         String?
+  fromAccountId     String?
+  toAccountId       String?
+  receivableId      String?
+  description       String?
+  occurredAt        DateTime
+  company           Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category          CompanyMoneyCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  account           CompanyMoneyAccount?       @relation("CompanyMoneyTransactionAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  fromAccount       CompanyMoneyAccount?       @relation("CompanyMoneyTransactionFromAccount", fields: [fromAccountId], references: [id], onDelete: SetNull)
+  toAccount         CompanyMoneyAccount?       @relation("CompanyMoneyTransactionToAccount", fields: [toAccountId], references: [id], onDelete: SetNull)
+  receivable        CompanyMoneyReceivable?    @relation(fields: [receivableId], references: [id], onDelete: SetNull)
+  receivablePayment CompanyMoneyReceivablePayment?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  @@index([companyId, occurredAt])
+  @@index([accountId])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+  @@index([receivableId])
+}
+
+model CompanyMoneyBudgetPlan {
+  id          String                     @id @default(cuid())
+  companyId   String
+  month       DateTime
+  totalAmount Int                        @default(0)
+  company     Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  buckets     CompanyMoneyBudgetBucket[]
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  @@unique([companyId, month])
+}
+
+model CompanyMoneyBudgetBucket {
+  id           String                             @id @default(cuid())
+  budgetPlanId String
+  label        String
+  percentage   Int
+  position     Int                                @default(0)
+  budgetPlan   CompanyMoneyBudgetPlan             @relation(fields: [budgetPlanId], references: [id], onDelete: Cascade)
+  categories   CompanyMoneyBudgetBucketCategory[]
+  createdAt    DateTime                           @default(now())
+  updatedAt    DateTime                           @updatedAt
+
+  @@index([budgetPlanId, position])
+}
+
+model CompanyMoneyBudgetBucketCategory {
+  id         String                   @id @default(cuid())
+  bucketId   String
+  categoryId String
+  bucket     CompanyMoneyBudgetBucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  category   CompanyMoneyCategory     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+
+  @@unique([bucketId, categoryId])
+}
+
+model CompanyMoneyWishlistItem {
+  id             String                @id @default(cuid())
+  companyId      String
+  name           String
+  estimatedPrice Int                   @default(0)
+  priority       MoneyWishlistPriority @default(MEDIUM)
+  status         MoneyWishlistStatus   @default(PLANNED)
+  notes          String?
+  company        Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@index([companyId, status])
+}
+
+model CompanyMoneyReceivable {
+  id              String                          @id @default(cuid())
+  companyId       String
+  personName      String
+  originalAmount  Int
+  remainingAmount Int
+  status          MoneyReceivableStatus          @default(ACTIVE)
+  dueDate         DateTime?
+  notes           String?
+  company         Company                         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions    CompanyMoneyTransaction[]
+  payments        CompanyMoneyReceivablePayment[]
+  createdAt       DateTime                        @default(now())
+  updatedAt       DateTime                        @updatedAt
+
+  @@index([companyId, status])
+}
+
+model CompanyMoneyReceivablePayment {
+  id            String                  @id @default(cuid())
+  receivableId  String
+  transactionId String                  @unique
+  amount        Int
+  paidAt        DateTime
+  receivable    CompanyMoneyReceivable  @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  transaction   CompanyMoneyTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
 
   @@index([receivableId, paidAt])
 }

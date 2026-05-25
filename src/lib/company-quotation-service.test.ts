@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  calculateQuotationTotals,
   formatQuotationNumber,
   getIssuedAtForQuotationStatus,
   isRetryableQuotationConflict,
@@ -48,6 +49,66 @@ test("nextQuotationSequence resets to 1 for a new month", () => {
       existingQuotationNumbers: ["MAMAT/QT/2026/05/125", "MAMAT/QT/2026/04/999"],
     }),
     1
+  );
+});
+
+test("calculateQuotationTotals applies fixed discount and keeps subtotal", () => {
+  assert.deepEqual(
+    calculateQuotationTotals({
+      lines: [{ description: "Build", quantity: 2, unitPrice: 500_000 }],
+      discountType: "FIXED",
+      discountValue: 250_000,
+    }),
+    {
+      subtotal: 1_000_000,
+      discountAmount: 250_000,
+      total: 750_000,
+    }
+  );
+});
+
+test("calculateQuotationTotals clamps fixed discount above subtotal", () => {
+  assert.deepEqual(
+    calculateQuotationTotals({
+      lines: [{ description: "Build", quantity: 1, unitPrice: 300_000 }],
+      discountType: "FIXED",
+      discountValue: 500_000,
+    }),
+    {
+      subtotal: 300_000,
+      discountAmount: 300_000,
+      total: 0,
+    }
+  );
+});
+
+test("calculateQuotationTotals converts percentage discount to rupiah", () => {
+  assert.deepEqual(
+    calculateQuotationTotals({
+      lines: [{ description: "Build", quantity: 3, unitPrice: 400_000 }],
+      discountType: "PERCENTAGE",
+      discountValue: 10,
+    }),
+    {
+      subtotal: 1_200_000,
+      discountAmount: 120_000,
+      total: 1_080_000,
+    }
+  );
+});
+
+test("calculateQuotationTotals keeps zero subtotal at zero", () => {
+  assert.deepEqual(
+    calculateQuotationTotals({
+      lines: [{ description: "Free consult", quantity: 1, unitPrice: 0 }],
+      discountType: "PERCENTAGE",
+      discountValue: 50,
+    }),
+    {
+      subtotal: 0,
+      discountAmount: 0,
+      total: 0,
+    }
   );
 });
 
