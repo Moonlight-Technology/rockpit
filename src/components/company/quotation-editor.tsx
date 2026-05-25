@@ -4,11 +4,14 @@ import { useParams, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 type QuotationStatus = "DRAFT" | "SENT" | "APPROVED" | "REJECTED";
+type QuotationDiscountType = "FIXED" | "PERCENTAGE";
 
 type QuotationEditorProps = {
   leadId: string;
   quotationId?: string;
   initialStatus?: QuotationStatus;
+  initialDiscountType?: QuotationDiscountType;
+  initialDiscountValue?: number;
   initialLines?: Array<{
     description: string;
     quantity: number;
@@ -32,6 +35,8 @@ export function QuotationEditor({
   leadId,
   quotationId,
   initialStatus = "DRAFT",
+  initialDiscountType = "FIXED",
+  initialDiscountValue = 0,
   initialLines,
   title = "Quotation editor",
   description = "Build line items and create a new quotation revision.",
@@ -46,11 +51,18 @@ export function QuotationEditor({
   const [isPending, startTransition] = useTransition();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<QuotationStatus>(initialStatus);
+  const [discountType, setDiscountType] = useState<QuotationDiscountType>(initialDiscountType);
+  const [discountValue, setDiscountValue] = useState(initialDiscountValue);
   const [lines, setLines] = useState(() => (initialLines?.length ? initialLines : [emptyLine]));
   const [error, setError] = useState<string | null>(null);
   const isBusy = isSubmitting || isPending;
 
   const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+  const discountAmount =
+    discountType === "PERCENTAGE"
+      ? Math.min(Math.floor((subtotal * discountValue) / 100), subtotal)
+      : Math.min(discountValue, subtotal);
+  const total = Math.max(subtotal - discountAmount, 0);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,6 +84,8 @@ export function QuotationEditor({
         status,
         lines,
         reviveLead,
+        discountType,
+        discountValue,
       }),
     });
     const result = await response.json().catch(() => null);
@@ -235,9 +249,48 @@ export function QuotationEditor({
         >
           Add line
         </button>
+        <div className="grid gap-3 rounded-2xl border border-border bg-muted/30 p-4 sm:grid-cols-[180px_minmax(0,1fr)]">
+          <label className="grid gap-1 text-sm">
+            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              Discount type
+            </span>
+            <select
+              value={discountType}
+              onChange={(event) => setDiscountType(event.target.value as QuotationDiscountType)}
+              disabled={isBusy}
+              className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
+            >
+              <option value="FIXED">Nominal (Rp)</option>
+              <option value="PERCENTAGE">Percentage (%)</option>
+            </select>
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              {discountType === "PERCENTAGE" ? "Discount (%)" : "Discount (Rp)"}
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={discountType === "PERCENTAGE" ? 100 : undefined}
+              value={discountValue}
+              disabled={isBusy}
+              onChange={(event) => setDiscountValue(Number(event.target.value || 0))}
+              className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
+            />
+          </label>
+        </div>
         <div className="text-right">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Subtotal</p>
-          <p className="text-lg font-semibold text-card-foreground">Rp{subtotal.toLocaleString("id-ID")}</p>
+          <p className="text-lg font-semibold text-card-foreground">
+            Rp{subtotal.toLocaleString("id-ID")}
+          </p>
+          <p className="mt-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            Discount {discountType === "PERCENTAGE" ? `(${discountValue}%)` : "(Rp)"}
+          </p>
+          <p className="text-sm text-muted-foreground">Rp{discountAmount.toLocaleString("id-ID")}</p>
+          <p className="mt-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Total</p>
+          <p className="text-lg font-semibold text-card-foreground">Rp{total.toLocaleString("id-ID")}</p>
         </div>
       </div>
 
