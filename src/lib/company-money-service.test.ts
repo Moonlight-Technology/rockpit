@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { listCompanyMoneyCategoriesWithDependencies } from "./company-money-service.ts";
+import {
+  createCompanyMoneyTransactionWithDependencies,
+  listCompanyMoneyAccountsWithDependencies,
+  listCompanyMoneyCategoriesWithDependencies,
+} from "./company-money-service.ts";
 
 function createDeps(overrides: Record<string, unknown> = {}) {
   const calls: Array<{ method: string; args: unknown }> = [];
@@ -56,4 +60,54 @@ test("listCompanyMoneyCategoriesWithDependencies seeds defaults once per owner c
     deps.calls.some((call) => call.method === "companyMoneyCategory.createMany"),
     true
   );
+});
+
+test("listCompanyMoneyAccountsWithDependencies rejects non-owners", async () => {
+  const deps = createDeps({
+    company: {
+      findFirst: async () => null,
+    },
+  });
+
+  const result = await listCompanyMoneyAccountsWithDependencies(
+    { userId: "user-2", companyId: "company-1" },
+    deps
+  );
+
+  assert.deepEqual(result, { error: "FORBIDDEN" });
+});
+
+test("createCompanyMoneyTransactionWithDependencies rejects negative resulting balances", async () => {
+  const deps = createDeps({
+    companyMoneyAccount: {
+      count: async () => 1,
+      findMany: async () => [{ id: "acc-1", name: "Cash", type: "CASH" }],
+    },
+    companyMoneyCategory: {
+      count: async () => 1,
+    },
+    companyMoneyTransaction: {
+      findMany: async () => [],
+    },
+  });
+
+  const result = await createCompanyMoneyTransactionWithDependencies(
+    {
+      userId: "user-1",
+      companyId: "company-1",
+      payload: {
+        type: "EXPENSE",
+        amount: 50_000,
+        accountId: "acc-1",
+        categoryId: "cat-1",
+        occurredAt: "2026-05-25T12:00:00.000Z",
+      },
+    },
+    deps
+  );
+
+  assert.deepEqual(result, {
+    error: "INVALID_STATE",
+    message: "Transaction would make account balance negative.",
+  });
 });
