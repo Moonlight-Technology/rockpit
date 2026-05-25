@@ -97,6 +97,21 @@ test("calculateQuotationTotals converts percentage discount to rupiah", () => {
   );
 });
 
+test("calculateQuotationTotals keeps zero subtotal at zero", () => {
+  assert.deepEqual(
+    calculateQuotationTotals({
+      lines: [{ description: "Free consult", quantity: 1, unitPrice: 0 }],
+      discountType: "PERCENTAGE",
+      discountValue: 50,
+    }),
+    {
+      subtotal: 0,
+      discountAmount: 0,
+      total: 0,
+    }
+  );
+});
+
 test("getIssuedAtForQuotationStatus leaves drafts unissued", () => {
   const now = new Date("2026-05-17T10:11:12.000Z");
 

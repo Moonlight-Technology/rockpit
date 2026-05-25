@@ -388,10 +388,6 @@ async function getOwnerCompanyContext(
   return { company };
 }
 
-function sumQuotationLines(lines: Array<{ quantity: number; unitPrice: number }>) {
-  return lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
-}
-
 export async function listQuotationsForUser(
   userId: string,
   companyId: string
@@ -502,7 +498,11 @@ export async function createQuotationForUser(input: {
         });
       }
 
-      const subtotal = sumQuotationLines(parsed.lines);
+      const totals = calculateQuotationTotals({
+        lines: parsed.lines,
+        discountType: parsed.discountType,
+        discountValue: parsed.discountValue,
+      });
       const status = parsed.status;
       const issuedQuotationAt = getIssuedAtForQuotationStatus(status, issuedAt);
 
@@ -513,8 +513,11 @@ export async function createQuotationForUser(input: {
           quotationNumber,
           revisionNumber,
           status,
-          subtotal,
-          total: subtotal,
+          subtotal: totals.subtotal,
+          discountType: parsed.discountType,
+          discountValue: parsed.discountValue,
+          discountAmount: totals.discountAmount,
+          total: totals.total,
           issuedAt: issuedQuotationAt,
           createdByUserId: input.userId,
           lines: {
@@ -642,7 +645,11 @@ export async function createQuotationRevisionForUser(input: {
         select: { revisionNumber: true },
       });
 
-      const subtotal = sumQuotationLines(parsed.lines);
+      const totals = calculateQuotationTotals({
+        lines: parsed.lines,
+        discountType: parsed.discountType,
+        discountValue: parsed.discountValue,
+      });
       const issuedAt = new Date();
       const status = parsed.status;
       const issuedQuotationAt = getIssuedAtForQuotationStatus(status, issuedAt);
@@ -654,8 +661,11 @@ export async function createQuotationRevisionForUser(input: {
           quotationNumber: sourceQuotation.quotationNumber,
           revisionNumber: nextRevisionNumber(latestRevision ? [latestRevision] : []),
           status,
-          subtotal,
-          total: subtotal,
+          subtotal: totals.subtotal,
+          discountType: parsed.discountType,
+          discountValue: parsed.discountValue,
+          discountAmount: totals.discountAmount,
+          total: totals.total,
           issuedAt: issuedQuotationAt,
           createdByUserId: input.userId,
           lines: {

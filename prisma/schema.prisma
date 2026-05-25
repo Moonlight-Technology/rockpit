@@ -32,6 +32,11 @@ enum CompanyQuotationStatus {
   REJECTED
 }
 
+enum CompanyQuotationDiscountType {
+  FIXED
+  PERCENTAGE
+}
+
 enum WorkspaceType {
   PERSONAL
   COMPANY
@@ -252,25 +257,28 @@ model CompanyLead {
 }
 
 model CompanyQuotation {
-  id              String                 @id @default(cuid())
+  id              String                       @id @default(cuid())
   companyId       String
   leadId          String
   quotationNumber String
   revisionNumber  Int
-  status          CompanyQuotationStatus @default(DRAFT)
+  status          CompanyQuotationStatus      @default(DRAFT)
   subtotal        Int
+  discountType    CompanyQuotationDiscountType @default(FIXED)
+  discountValue   Int                         @default(0)
+  discountAmount  Int                         @default(0)
   total           Int
   issuedAt        DateTime?
   sentAt          DateTime?
   approvedAt      DateTime?
   rejectedAt      DateTime?
   createdByUserId String
-  company         Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  lead            CompanyLead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  createdBy       User                   @relation("CompanyQuotationCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  company         Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead            CompanyLead                 @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy       User                        @relation("CompanyQuotationCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
   lines           CompanyQuotationLine[]
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
 
   @@unique([leadId, revisionNumber])
   @@unique([companyId, quotationNumber, revisionNumber])
