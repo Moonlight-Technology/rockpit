@@ -4,6 +4,7 @@ import {
   createCompanyMoneyTransactionWithDependencies,
   listCompanyMoneyAccountsWithDependencies,
   listCompanyMoneyCategoriesWithDependencies,
+  updateCompanyMoneyTransactionWithDependencies,
 } from "./company-money-service.ts";
 
 function createDeps(overrides: Record<string, unknown> = {}) {
@@ -110,4 +111,29 @@ test("createCompanyMoneyTransactionWithDependencies rejects negative resulting b
     error: "INVALID_STATE",
     message: "Transaction would make account balance negative.",
   });
+});
+
+test("updateCompanyMoneyTransactionWithDependencies rejects transactions outside the company", async () => {
+  const deps = createDeps({
+    companyMoneyTransaction: {
+      findFirst: async () => null,
+    },
+  });
+
+  const result = await updateCompanyMoneyTransactionWithDependencies(
+    {
+      userId: "user-1",
+      companyId: "company-1",
+      transactionId: "txn-1",
+      payload: {
+        type: "INCOME",
+        amount: 200_000,
+        accountId: "acc-1",
+        occurredAt: "2026-05-25T12:00:00.000Z",
+      },
+    },
+    deps
+  );
+
+  assert.deepEqual(result, { error: "NOT_FOUND" });
 });

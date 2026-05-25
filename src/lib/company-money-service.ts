@@ -7,7 +7,6 @@ import type {
   CompanyMoneyWishlistItem,
   MoneyAccountType,
   MoneyCategoryKind,
-  MoneyReceivableStatus,
   MoneyTransactionType,
   MoneyWishlistPriority,
   MoneyWishlistStatus,
@@ -537,7 +536,7 @@ async function createReceivablePaymentTransactionWithDependencies(
     return createdTransaction;
   });
 
-  return { data: mapTransaction(transaction as ReturnType<typeof mapTransaction> extends infer _ ? never : never) };
+  return { data: mapTransaction(transaction as never) };
 }
 
 export async function createCompanyMoneyTransactionWithDependencies(
