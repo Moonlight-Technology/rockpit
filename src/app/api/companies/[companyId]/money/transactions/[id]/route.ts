@@ -12,10 +12,14 @@ import {
 } from "@/lib/company-money-service";
 import { updateCompanyMoneyTransactionSchema } from "@/lib/validators/company-money";
 
-function companyAccessError(error: "FORBIDDEN" | "NOT_FOUND") {
-  return error === "FORBIDDEN"
-    ? forbidden("Only company owner can access expense manager.")
-    : notFound("Company not found.");
+function companyAccessError(error: "FORBIDDEN" | "NOT_FOUND" | "INVALID_STATE") {
+  if (error === "FORBIDDEN") {
+    return forbidden("Only company owner can access expense manager.");
+  }
+  if (error === "NOT_FOUND") {
+    return notFound("Company not found.");
+  }
+  return validationError("Invalid expense manager request.");
 }
 
 export async function PATCH(
@@ -38,10 +42,13 @@ export async function PATCH(
     transactionId: id,
     payload: parsed.data,
   });
-  if ("error" in result) {
-    if (result.error === "FORBIDDEN" && !result.message) return companyAccessError(result.error);
-    if (result.error === "NOT_FOUND" && !result.message) return notFound("Transaction not found.");
-    return validationError(result.message ?? "Invalid transaction payload.");
+  if (!("data" in result)) {
+    if ("message" in result && typeof result.message === "string") {
+      return validationError(result.message);
+    }
+    if (result.error === "FORBIDDEN") return companyAccessError(result.error);
+    if (result.error === "NOT_FOUND") return notFound("Transaction not found.");
+    return validationError("Invalid transaction payload.");
   }
 
   return NextResponse.json({ ok: true, data: result.data });
@@ -60,10 +67,13 @@ export async function DELETE(
     companyId,
     transactionId: id,
   });
-  if ("error" in result) {
-    if (result.error === "FORBIDDEN" && !result.message) return companyAccessError(result.error);
-    if (result.error === "NOT_FOUND" && !result.message) return notFound("Transaction not found.");
-    return validationError(result.message ?? "Invalid transaction payload.");
+  if (!("data" in result)) {
+    if ("message" in result && typeof result.message === "string") {
+      return validationError(result.message);
+    }
+    if (result.error === "FORBIDDEN") return companyAccessError(result.error);
+    if (result.error === "NOT_FOUND") return notFound("Transaction not found.");
+    return validationError("Invalid transaction payload.");
   }
 
   return NextResponse.json({ ok: true });

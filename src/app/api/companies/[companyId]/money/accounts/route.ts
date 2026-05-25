@@ -12,10 +12,14 @@ import {
 } from "@/lib/company-money-service";
 import { createCompanyMoneyAccountSchema } from "@/lib/validators/company-money";
 
-function companyAccessError(error: "FORBIDDEN" | "NOT_FOUND") {
-  return error === "FORBIDDEN"
-    ? forbidden("Only company owner can access expense manager.")
-    : notFound("Company not found.");
+function companyAccessError(error: "FORBIDDEN" | "NOT_FOUND" | "INVALID_STATE") {
+  if (error === "FORBIDDEN") {
+    return forbidden("Only company owner can access expense manager.");
+  }
+  if (error === "NOT_FOUND") {
+    return notFound("Company not found.");
+  }
+  return validationError("Invalid expense manager request.");
 }
 
 export async function GET(
@@ -27,7 +31,7 @@ export async function GET(
 
   const { companyId } = await params;
   const result = await listCompanyMoneyAccounts({ userId, companyId });
-  if ("error" in result) return companyAccessError(result.error);
+  if (!("data" in result)) return companyAccessError(result.error);
 
   return NextResponse.json({ ok: true, data: result.data });
 }
@@ -47,7 +51,7 @@ export async function POST(
 
   const { companyId } = await params;
   const result = await createCompanyMoneyAccount({ userId, companyId, ...parsed.data });
-  if ("error" in result) return companyAccessError(result.error);
+  if (!("data" in result)) return companyAccessError(result.error);
 
   return NextResponse.json({ ok: true, data: result.data }, { status: 201 });
 }

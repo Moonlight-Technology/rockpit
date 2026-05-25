@@ -471,11 +471,11 @@ async function createReceivablePaymentTransactionWithDependencies(
 
   const isReceivablePaymentPayload = "paidAt" in input.payload;
   const occurredAt = isReceivablePaymentPayload
-    ? input.payload.paidAt
-    : input.payload.occurredAt;
+    ? (input.payload as CreateReceivablePaymentInput).paidAt
+    : (input.payload as Extract<CreateMoneyTransactionInput, { type: "RECEIVABLE_PAYMENT" }>).occurredAt;
   const description = isReceivablePaymentPayload
-    ? input.payload.notes
-    : input.payload.description;
+    ? (input.payload as CreateReceivablePaymentInput).notes
+    : (input.payload as Extract<CreateMoneyTransactionInput, { type: "RECEIVABLE_PAYMENT" }>).description;
 
   const [accountExists, receivable] = await Promise.all([
     requireAccounts(company.id, [input.payload.accountId], deps),
@@ -667,8 +667,9 @@ export async function createCompanyMoneyTransactionWithDependencies(
   }
 
   if (input.payload.type === "LEND") {
+    const lendPayload = input.payload as Extract<CreateMoneyTransactionInput, { type: "LEND" }>;
     const [accountExists, balances] = await Promise.all([
-      requireAccounts(company.id, [input.payload.accountId], deps),
+      requireAccounts(company.id, [lendPayload.accountId], deps),
       companyAccountBalances(company.id, deps),
     ]);
 
@@ -676,7 +677,7 @@ export async function createCompanyMoneyTransactionWithDependencies(
       return { error: "NOT_FOUND" as const, message: "Money record not found." };
     }
 
-    if ((balances[input.payload.accountId] ?? 0) < input.payload.amount) {
+    if ((balances[lendPayload.accountId] ?? 0) < lendPayload.amount) {
       return {
         error: "INVALID_STATE" as const,
         message: "Transaction would make account balance negative.",
@@ -687,23 +688,23 @@ export async function createCompanyMoneyTransactionWithDependencies(
       const receivable = await tx.companyMoneyReceivable.create({
         data: {
           companyId: company.id,
-          personName: input.payload.personName,
-          originalAmount: input.payload.amount,
-          remainingAmount: input.payload.amount,
-          dueDate: input.payload.dueDate ? new Date(input.payload.dueDate) : null,
-          notes: input.payload.description,
+          personName: lendPayload.personName,
+          originalAmount: lendPayload.amount,
+          remainingAmount: lendPayload.amount,
+          dueDate: lendPayload.dueDate ? new Date(lendPayload.dueDate) : null,
+          notes: lendPayload.description,
         },
       });
 
       return tx.companyMoneyTransaction.create({
         data: {
           companyId: company.id,
-          type: input.payload.type,
-          amount: input.payload.amount,
-          accountId: input.payload.accountId,
+          type: lendPayload.type,
+          amount: lendPayload.amount,
+          accountId: lendPayload.accountId,
           receivableId: receivable.id,
-          description: input.payload.description,
-          occurredAt: new Date(input.payload.occurredAt),
+          description: lendPayload.description,
+          occurredAt: new Date(lendPayload.occurredAt),
         },
         include: {
           category: { select: { id: true, name: true } },
@@ -718,7 +719,10 @@ export async function createCompanyMoneyTransactionWithDependencies(
     return { data: mapTransaction(transaction as never) };
   }
 
-  return createReceivablePaymentTransactionWithDependencies(input, deps);
+  const receivablePaymentInput = input as OwnerContext & {
+    payload: Extract<CreateMoneyTransactionInput, { type: "RECEIVABLE_PAYMENT" }>;
+  };
+  return createReceivablePaymentTransactionWithDependencies(receivablePaymentInput, deps);
 }
 
 export async function createCompanyMoneyTransaction(

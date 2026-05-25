@@ -21,10 +21,14 @@ function isMonthValue(value: string) {
   return /^\d{4}-\d{2}$/.test(value);
 }
 
-function companyAccessError(error: "FORBIDDEN" | "NOT_FOUND") {
-  return error === "FORBIDDEN"
-    ? forbidden("Only company owner can access expense manager.")
-    : notFound("Company not found.");
+function companyAccessError(error: "FORBIDDEN" | "NOT_FOUND" | "INVALID_STATE") {
+  if (error === "FORBIDDEN") {
+    return forbidden("Only company owner can access expense manager.");
+  }
+  if (error === "NOT_FOUND") {
+    return notFound("Company not found.");
+  }
+  return validationError("Invalid expense manager request.");
 }
 
 export async function GET(
@@ -40,7 +44,7 @@ export async function GET(
 
   const { companyId } = await params;
   const result = await listCompanyMoneyTransactions({ userId, companyId, month });
-  if ("error" in result) return companyAccessError(result.error);
+  if (!("data" in result)) return companyAccessError(result.error);
 
   return NextResponse.json({ ok: true, data: result.data });
 }
@@ -60,8 +64,10 @@ export async function POST(
 
   const { companyId } = await params;
   const result = await createCompanyMoneyTransaction({ userId, companyId, payload: parsed.data });
-  if ("error" in result) {
-    if (result.message) return validationError(result.message);
+  if (!("data" in result)) {
+    if ("message" in result && typeof result.message === "string") {
+      return validationError(result.message);
+    }
     return companyAccessError(result.error);
   }
 
