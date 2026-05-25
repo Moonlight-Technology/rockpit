@@ -63,11 +63,11 @@ test("listCompanyMoneyCategoriesWithDependencies seeds defaults once per owner c
 });
 
 test("listCompanyMoneyAccountsWithDependencies rejects non-owners", async () => {
-  const deps = createDeps({
-    company: {
-      findFirst: async () => null,
-    },
-  });
+  const deps = createDeps();
+  deps.prisma.company.findFirst = async (args: unknown) => {
+    deps.calls.push({ method: "company.findFirst", args });
+    return { id: "company-1", ownerId: "user-1" };
+  };
 
   const result = await listCompanyMoneyAccountsWithDependencies(
     { userId: "user-2", companyId: "company-1" },
