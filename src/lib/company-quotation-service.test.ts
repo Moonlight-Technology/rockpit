@@ -8,6 +8,7 @@ import {
   nextQuotationSequence,
   nextRevisionNumber,
   retryOnQuotationConflict,
+  syncLeadForApprovedQuotation,
 } from "./company-quotation-service.ts";
 
 test("formatQuotationNumber builds a company-prefixed sequence number", () => {
@@ -178,6 +179,108 @@ test("retryOnQuotationConflict throws a controlled conflict after exhausting ret
       "code" in error &&
       error.code === "QUOTATION_CONFLICT"
   );
+});
+
+test("syncLeadForApprovedQuotation always updates estimatedValue to approved total", async () => {
+  const calls: Array<{ where: unknown; data: unknown }> = [];
+  const tx = {
+    companyLead: {
+      update: async (args: { where: unknown; data: unknown }) => {
+        calls.push(args);
+        return null;
+      },
+    },
+  } as const;
+
+  const warnings = await syncLeadForApprovedQuotation({
+    tx: tx as never,
+    leadId: "lead-1",
+    total: 4_250_000,
+    now: new Date("2026-05-25T10:00:00.000Z"),
+    leadStage: "WON",
+    boardColumns: [{ id: "won", title: "Won" }],
+  });
+
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(calls, [
+    {
+      where: { id: "lead-1" },
+      data: { estimatedValue: 4_250_000 },
+    },
+  ]);
+});
+
+test("syncLeadForApprovedQuotation updates estimatedValue even when won column is missing", async () => {
+  const calls: Array<{ where: unknown; data: unknown }> = [];
+  const tx = {
+    companyLead: {
+      update: async (args: { where: unknown; data: unknown }) => {
+        calls.push(args);
+        return null;
+      },
+    },
+  } as const;
+
+  const warnings = await syncLeadForApprovedQuotation({
+    tx: tx as never,
+    leadId: "lead-1",
+    total: 6_000_000,
+    now: new Date("2026-05-25T10:00:00.000Z"),
+    leadStage: "NEGOTIATION",
+    boardColumns: [{ id: "proposal", title: "Proposal" }],
+  });
+
+  assert.deepEqual(warnings, [
+    {
+      code: "WON_COLUMN_MISSING",
+      message:
+        "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
+    },
+  ]);
+  assert.deepEqual(calls, [
+    {
+      where: { id: "lead-1" },
+      data: { estimatedValue: 6_000_000 },
+    },
+  ]);
+});
+
+test("syncLeadForApprovedQuotation updates estimatedValue and moves non-won leads to won", async () => {
+  const calls: Array<{ where: unknown; data: unknown }> = [];
+  const tx = {
+    companyLead: {
+      update: async (args: { where: unknown; data: unknown }) => {
+        calls.push(args);
+        return null;
+      },
+    },
+  } as const;
+
+  const now = new Date("2026-05-25T10:00:00.000Z");
+  const warnings = await syncLeadForApprovedQuotation({
+    tx: tx as never,
+    leadId: "lead-1",
+    total: 8_500_000,
+    now,
+    leadStage: "NEGOTIATION",
+    boardColumns: [{ id: "won-col", title: "Won" }],
+  });
+
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(calls, [
+    {
+      where: { id: "lead-1" },
+      data: { estimatedValue: 8_500_000 },
+    },
+    {
+      where: { id: "lead-1" },
+      data: {
+        column: { connect: { id: "won-col" } },
+        stage: "WON",
+        wonAt: now,
+      },
+    },
+  ]);
 });
 
 import { applyStatusTransition } from "./company-quotation-service.ts";

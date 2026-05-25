@@ -273,6 +273,46 @@ export function applyStatusTransition(input: {
   return { changed: true, updates };
 }
 
+export async function syncLeadForApprovedQuotation(input: {
+  tx: Pick<Prisma.TransactionClient, "companyLead">;
+  leadId: string;
+  total: number;
+  now: Date;
+  leadStage: CompanyLeadStage;
+  boardColumns: Array<{ id: string; title: string }>;
+}) {
+  await input.tx.companyLead.update({
+    where: { id: input.leadId },
+    data: { estimatedValue: input.total },
+  });
+
+  if (input.leadStage === CompanyLeadStage.WON) {
+    return [] as QuotationWarning[];
+  }
+
+  const wonColumn = findStageColumn(input.boardColumns, CompanyLeadStage.WON);
+  if (!wonColumn) {
+    return [
+      {
+        code: "WON_COLUMN_MISSING",
+        message:
+          "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
+      },
+    ] satisfies QuotationWarning[];
+  }
+
+  await input.tx.companyLead.update({
+    where: { id: input.leadId },
+    data: {
+      column: { connect: { id: wonColumn.id } },
+      stage: CompanyLeadStage.WON,
+      wonAt: input.now,
+    },
+  });
+
+  return [] as QuotationWarning[];
+}
+
 function normalizeErrorTarget(target: unknown) {
   if (Array.isArray(target)) {
     return target.map((item) => String(item));
