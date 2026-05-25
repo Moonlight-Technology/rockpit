@@ -22,6 +22,38 @@ test("createQuotationSchema accepts reviveLead=true", () => {
   assert.equal(parsed.reviveLead, true);
 });
 
+test("createQuotationSchema defaults discount to fixed zero", () => {
+  const parsed = createQuotationSchema.parse({
+    leadId: "lead_1",
+    lines: [{ description: "Design", quantity: 1, unitPrice: 1000 }],
+  });
+
+  assert.equal(parsed.discountType, "FIXED");
+  assert.equal(parsed.discountValue, 0);
+});
+
+test("createQuotationSchema rejects percentage discount above one hundred", () => {
+  assert.throws(() =>
+    createQuotationSchema.parse({
+      leadId: "lead_1",
+      lines: [{ description: "Design", quantity: 1, unitPrice: 1000 }],
+      discountType: "PERCENTAGE",
+      discountValue: 101,
+    })
+  );
+});
+
+test("createQuotationSchema rejects negative fixed discount", () => {
+  assert.throws(() =>
+    createQuotationSchema.parse({
+      leadId: "lead_1",
+      lines: [{ description: "Design", quantity: 1, unitPrice: 1000 }],
+      discountType: "FIXED",
+      discountValue: -1,
+    })
+  );
+});
+
 test("updateQuotationStatusSchema accepts each enum value", () => {
   for (const status of ["DRAFT", "SENT", "APPROVED", "REJECTED"] as const) {
     const parsed = updateQuotationStatusSchema.parse({ status });
