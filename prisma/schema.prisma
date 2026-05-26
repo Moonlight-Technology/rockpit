@@ -37,6 +37,13 @@ enum CompanyQuotationDiscountType {
   PERCENTAGE
 }
 
+enum CompanyInvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  CANCELLED
+}
+
 enum WorkspaceType {
   PERSONAL
   COMPANY
@@ -113,6 +120,7 @@ model User {
   companyLeadBoards  CompanyLeadBoardMember[] @relation("CompanyLeadBoardMemberUser")
   ownedLeads         CompanyLead[]            @relation("CompanyLeadOwner")
   createdQuotations  CompanyQuotation[]       @relation("CompanyQuotationCreator")
+  createdInvoices    CompanyInvoice[]         @relation("CompanyInvoiceCreator")
   moneyAccounts      MoneyAccount[]
   moneyCategories    MoneyCategory[]
   moneyTransactions  MoneyTransaction[]
@@ -168,6 +176,7 @@ model Company {
   leadBoards      CompanyLeadBoard[]
   leads           CompanyLead[]
   quotations      CompanyQuotation[]
+  invoices        CompanyInvoice[]
   boards          Board[]
   moneyAccounts   CompanyMoneyAccount[]
   moneyCategories CompanyMoneyCategory[]
@@ -254,6 +263,7 @@ model CompanyLead {
   client                  CompanyClient?     @relation(fields: [clientId], references: [id], onDelete: Restrict)
   owner                   User               @relation("CompanyLeadOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   quotations              CompanyQuotation[]
+  invoices                CompanyInvoice[]
   sourceProjectBoard      Board?             @relation("BoardSourceLead")
   convertedProjectBoard   Board?             @relation("CompanyLeadConvertedProjectBoard", fields: [convertedProjectBoardId], references: [id], onDelete: SetNull)
   createdAt               DateTime           @default(now())
@@ -283,6 +293,7 @@ model CompanyQuotation {
   lead            CompanyLead                 @relation(fields: [leadId], references: [id], onDelete: Cascade)
   createdBy       User                        @relation("CompanyQuotationCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
   lines           CompanyQuotationLine[]
+  invoices        CompanyInvoice[]
   createdAt       DateTime                    @default(now())
   updatedAt       DateTime                    @updatedAt
 
@@ -301,6 +312,45 @@ model CompanyQuotationLine {
   quotation   CompanyQuotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
 
   @@index([quotationId, position])
+}
+
+model CompanyInvoice {
+  id              String               @id @default(cuid())
+  companyId       String
+  quotationId     String
+  leadId          String
+  createdByUserId String
+  invoiceNumber   String
+  status          CompanyInvoiceStatus @default(DRAFT)
+  subtotal        Int
+  total           Int
+  notes           String               @default("")
+  issuedAt        DateTime?
+  paidAt          DateTime?
+  cancelledAt     DateTime?
+  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  quotation       CompanyQuotation     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  lead            CompanyLead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy       User                 @relation("CompanyInvoiceCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  lines           CompanyInvoiceLine[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([companyId, createdAt])
+  @@index([quotationId, status])
+  @@unique([companyId, invoiceNumber])
+}
+
+model CompanyInvoiceLine {
+  id          String         @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Int
+  unitPrice   Int
+  position    Int
+  invoice     CompanyInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, position])
 }
 
 model BoardProjectInfo {
