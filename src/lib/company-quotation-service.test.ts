@@ -351,3 +351,18 @@ test("applyStatusTransition APPROVED -> DRAFT changes status but no new timestam
   assert.equal("approvedAt" in result.updates, false);
   assert.equal("sentAt" in result.updates, false);
 });
+
+test("applyStatusTransition APPROVED -> DRAFT remains a status-only change", () => {
+  const earlier = new Date("2026-05-10T00:00:00.000Z");
+  const now = new Date("2026-05-25T10:00:00.000Z");
+  const result = applyStatusTransition({
+    currentStatus: "APPROVED",
+    nextStatus: "DRAFT",
+    timestamps: { sentAt: earlier, approvedAt: earlier, rejectedAt: null, issuedAt: earlier },
+    now,
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.updates.status, "DRAFT");
+  assert.equal("estimatedValue" in (result.updates as Record<string, unknown>), false);
+});
