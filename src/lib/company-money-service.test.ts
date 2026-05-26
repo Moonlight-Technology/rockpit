@@ -7,14 +7,26 @@ import {
   updateCompanyMoneyTransactionWithDependencies,
 } from "./company-money-service.ts";
 
+type CompanyMoneyDeps = Parameters<typeof listCompanyMoneyCategoriesWithDependencies>[1];
+
+async function unexpectedCall<T>(): Promise<T> {
+  throw new Error("Unexpected mock call");
+}
+
 function createDeps(overrides: Record<string, unknown> = {}) {
   const calls: Array<{ method: string; args: unknown }> = [];
-  const prisma = {
+  const prisma: CompanyMoneyDeps["prisma"] = {
     company: {
       findFirst: async (args: unknown) => {
         calls.push({ method: "company.findFirst", args });
         return { id: "company-1", ownerId: "user-1" };
       },
+    },
+    $transaction: async () => unexpectedCall(),
+    companyMoneyAccount: {
+      findMany: async () => [],
+      count: async () => 0,
+      create: async () => unexpectedCall(),
     },
     companyMoneyCategory: {
       count: async (args: unknown) => {
@@ -35,9 +47,45 @@ function createDeps(overrides: Record<string, unknown> = {}) {
             kind: "EXPENSE",
             isDefault: true,
             isActive: true,
+            createdAt: new Date("2026-05-26T00:00:00.000Z"),
+            updatedAt: new Date("2026-05-26T00:00:00.000Z"),
           },
         ];
       },
+      create: async () => unexpectedCall(),
+      findFirst: async () => null,
+      update: async () => unexpectedCall(),
+    },
+    companyMoneyTransaction: {
+      findMany: async () => [],
+      create: async () => unexpectedCall(),
+      findFirst: async () => null,
+      update: async () => unexpectedCall(),
+      delete: async () => unexpectedCall(),
+    },
+    companyMoneyBudgetPlan: {
+      findUnique: async () => null,
+      findFirst: async () => null,
+      create: async () => unexpectedCall(),
+    },
+    companyMoneyBudgetBucket: {
+      deleteMany: async () => unexpectedCall(),
+      create: async () => unexpectedCall(),
+    },
+    companyMoneyWishlistItem: {
+      findMany: async () => [],
+      create: async () => unexpectedCall(),
+      findFirst: async () => null,
+      update: async () => unexpectedCall(),
+    },
+    companyMoneyReceivable: {
+      findMany: async () => [],
+      findFirst: async () => null,
+      create: async () => unexpectedCall(),
+      update: async () => unexpectedCall(),
+    },
+    companyMoneyReceivablePayment: {
+      create: async () => unexpectedCall(),
     },
     ...overrides,
   };
