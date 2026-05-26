@@ -12,6 +12,7 @@ import {
   KanbanSquare,
   LayoutDashboard,
   PlusCircle,
+  ReceiptText,
   Settings,
   UsersRound,
 } from "lucide-react";
@@ -66,6 +67,7 @@ export function CompanyShell({
   const expensesHref = `/company/${company.id}/expenses`;
   const projectsHref = `/company/${company.id}/projects`;
   const quotationsHref = `/company/${company.id}/quotations`;
+  const invoicesHref = `/company/${company.id}/invoices`;
   const settingsHref = `/company/${company.id}/settings`;
 
   const primaryNav: NavItem[] = isOnboarding
@@ -86,6 +88,9 @@ export function CompanyShell({
           : []),
         ...(canManageSettings
           ? [{ href: quotationsHref, label: "Quotations", icon: FileText }]
+          : []),
+        ...(canManageSettings
+          ? [{ href: invoicesHref, label: "Invoices", icon: ReceiptText }]
           : []),
       ];
 

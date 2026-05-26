@@ -2,6 +2,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { ArrowLeft, Printer } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
+import { InvoiceEditor } from "@/components/company/invoice-editor";
 import { QuotationEditor } from "@/components/company/quotation-editor";
 import { QuotationStatusControl } from "@/components/company/quotation-status-control";
 import { getSessionUserId } from "@/lib/api";
@@ -28,6 +29,7 @@ export default async function CompanyQuotationDetailPage({
   const isLatestRevision =
     revisions.length === 0 ||
     quotation.revisionNumber === revisions[0].revisionNumber;
+  const canCreateInvoice = isLatestRevision && quotation.status === "APPROVED";
 
   return (
     <div className="space-y-6 print:space-y-0">
@@ -179,25 +181,43 @@ export default async function CompanyQuotationDetailPage({
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] print:hidden">
         {isLatestRevision ? (
-          <QuotationEditor
-            quotationId={quotation.id}
-            leadId={quotation.lead.id}
-            initialStatus="DRAFT"
-            initialDiscountType={quotation.discountType}
-            initialDiscountValue={quotation.discountValue}
-            initialLines={quotation.lines.map((line) => ({
-              description: line.description,
-              quantity: line.quantity,
-              unitPrice: line.unitPrice,
-            }))}
-            title="Create next revision"
-            description="Adjust pricing, line items, or discount. A new revision is always created as a Draft — use the status control above to change status of the current revision."
-            submitLabel="Create revision"
-            hideStatusField
-          />
+          <div className="space-y-4">
+            <QuotationEditor
+              quotationId={quotation.id}
+              leadId={quotation.lead.id}
+              initialStatus="DRAFT"
+              initialDiscountType={quotation.discountType}
+              initialDiscountValue={quotation.discountValue}
+              initialLines={quotation.lines.map((line) => ({
+                description: line.description,
+                quantity: line.quantity,
+                unitPrice: line.unitPrice,
+              }))}
+              title="Create next revision"
+              description="Adjust pricing, line items, or discount. A new revision is always created as a Draft — use the status control above to change status of the current revision."
+              submitLabel="Create revision"
+              hideStatusField
+            />
+            {canCreateInvoice ? (
+              <InvoiceEditor
+                quotationId={quotation.id}
+                quotationLabel={`${quotation.quotationNumber} rev ${quotation.revisionNumber}`}
+                prospectName={quotation.lead.prospectName}
+                initialLines={quotation.lines.map((line) => ({
+                  description: line.description,
+                  quantity: line.quantity,
+                  unitPrice: line.unitPrice,
+                }))}
+              />
+            ) : (
+              <div className="rounded-3xl border border-border bg-muted/30 p-6 text-sm text-muted-foreground">
+                Invoice creation unlocks after the latest quotation revision is approved.
+              </div>
+            )}
+          </div>
         ) : (
           <div className="rounded-3xl border border-border bg-muted/30 p-6 text-sm text-muted-foreground">
-            Open the latest revision to create another revision.
+            Open the latest revision to create another revision or invoice.
           </div>
         )}
 
