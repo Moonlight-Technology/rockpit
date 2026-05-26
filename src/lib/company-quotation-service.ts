@@ -708,30 +708,17 @@ export async function createQuotationRevisionForUser(input: {
         include: quotationDetailInclude,
       });
 
-      const warnings: QuotationWarning[] = [];
-
-      if (status === "APPROVED" && lead.stage !== CompanyLeadStage.WON) {
-        const wonColumn = findStageColumn(
-          lead.leadBoard.columns,
-          CompanyLeadStage.WON
-        );
-        if (wonColumn) {
-          await tx.companyLead.update({
-            where: { id: lead.id },
-            data: {
-              column: { connect: { id: wonColumn.id } },
-              stage: CompanyLeadStage.WON,
-              wonAt: issuedAt,
-            },
-          });
-        } else {
-          warnings.push({
-            code: "WON_COLUMN_MISSING",
-            message:
-              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
-          });
-        }
-      }
+      const warnings =
+        status === "APPROVED"
+          ? await syncLeadForApprovedQuotation({
+              tx,
+              leadId: lead.id,
+              total: quotation.total,
+              now: issuedAt,
+              leadStage: lead.stage,
+              boardColumns: lead.leadBoard.columns,
+            })
+          : [];
 
       return { data: quotation, warnings };
     })
@@ -814,7 +801,7 @@ export async function updateQuotationStatusForUser(input: {
       now,
     });
 
-    const warnings: QuotationWarning[] = [];
+    let warnings: QuotationWarning[] = [];
 
     if (!transition.changed) {
       const current = await tx.companyQuotation.findFirst({
@@ -845,24 +832,15 @@ export async function updateQuotationStatusForUser(input: {
         },
       });
 
-      if (lead && lead.stage !== CompanyLeadStage.WON) {
-        const wonColumn = findStageColumn(lead.leadBoard.columns, CompanyLeadStage.WON);
-        if (wonColumn) {
-          await tx.companyLead.update({
-            where: { id: lead.id },
-            data: {
-              column: { connect: { id: wonColumn.id } },
-              stage: CompanyLeadStage.WON,
-              wonAt: now,
-            },
-          });
-        } else {
-          warnings.push({
-            code: "WON_COLUMN_MISSING",
-            message:
-              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
-          });
-        }
+      if (lead) {
+        warnings = await syncLeadForApprovedQuotation({
+          tx,
+          leadId: lead.id,
+          total: updated.total,
+          now,
+          leadStage: lead.stage,
+          boardColumns: lead.leadBoard.columns,
+        });
       }
     }
 
