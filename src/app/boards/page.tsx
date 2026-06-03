@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { ArrowLeft, Pin, PinOff } from "lucide-react";
+import { BoardViewMode, parseBoardViewMode } from "@/lib/board-view-mode";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +44,32 @@ const themeClassMap: Record<string, string> = {
   Forest: "border-emerald-300/80 bg-emerald-50/70",
   Carbon: "border-zinc-300/80 bg-zinc-50/70",
 };
+const ALL_BOARDS_VIEW_MODE_STORAGE_KEY = "all-boards-view-mode";
+
+function getStoredBoardViewMode(): BoardViewMode {
+  if (typeof window === "undefined") return "board";
+  try {
+    return parseBoardViewMode(window.localStorage.getItem(ALL_BOARDS_VIEW_MODE_STORAGE_KEY));
+  } catch {
+    return "board";
+  }
+}
+
+function subscribeToBoardViewMode(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  const handleStorage = (event: Event) => {
+    if (event instanceof StorageEvent && event.key !== ALL_BOARDS_VIEW_MODE_STORAGE_KEY) return;
+    onStoreChange();
+  };
+
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener("board-view-mode-change", handleStorage);
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener("board-view-mode-change", handleStorage);
+  };
+}
 
 export default function AllBoardsPage() {
   const router = useRouter();
@@ -58,6 +85,11 @@ export default function AllBoardsPage() {
   const [pinPendingBoard, setPinPendingBoard] = useState<BoardListItem | null>(null);
   const [swapBoardId, setSwapBoardId] = useState("");
   const [pinLoadingBoardId, setPinLoadingBoardId] = useState<string | null>(null);
+  const viewMode = useSyncExternalStore(
+    subscribeToBoardViewMode,
+    getStoredBoardViewMode,
+    () => "board"
+  );
 
   useEffect(() => {
     const fetchBoards = async () => {
@@ -165,6 +197,9 @@ export default function AllBoardsPage() {
     return new Date(dueDates[0]);
   }, [personalTasks]);
 
+  const shouldShowPersonal =
+    selectedTag === "all" && "personal".includes(searchTitle.trim().toLowerCase() || "personal");
+
   const openSwapModal = (board: BoardListItem, candidates: { id: string; title: string }[]) => {
     setPinPendingBoard(board);
     setPinSwapCandidates(candidates);
@@ -228,6 +263,24 @@ export default function AllBoardsPage() {
     await refreshBoards();
   };
 
+  const renderProgressBar = (value: number) => (
+    <div aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-black/10">
+      <div
+        className="h-full rounded-full bg-slate-900 transition-[width]"
+        style={{ width: `${value}%` }}
+      />
+    </div>
+  );
+
+  const updateViewMode = (nextViewMode: BoardViewMode) => {
+    try {
+      window.localStorage.setItem(ALL_BOARDS_VIEW_MODE_STORAGE_KEY, nextViewMode);
+      window.dispatchEvent(new Event("board-view-mode-change"));
+    } catch {
+      // Ignore storage failures and keep the page usable with the default view.
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f9fafc_0%,#f3f5fa_48%,#eef2f9_100%)]">
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
@@ -240,7 +293,7 @@ export default function AllBoardsPage() {
         </div>
 
         <Card>
-          <CardContent className="grid gap-3 p-4 md:grid-cols-4">
+          <CardContent className="grid gap-3 p-4 md:grid-cols-5">
             <select
               value={boardScope}
               onChange={(event) => setBoardScope(event.target.value as BoardScope)}
@@ -276,85 +329,231 @@ export default function AllBoardsPage() {
               <option value="dueDate">Sort by: Due date</option>
               <option value="progress">Sort by: Progress percentage</option>
             </select>
+            <select
+              value={viewMode}
+              onChange={(event) => updateViewMode(event.target.value as BoardViewMode)}
+              className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <option value="board">View: Board</option>
+              <option value="list">View: List</option>
+            </select>
           </CardContent>
         </Card>
 
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading boards...</p>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {selectedTag === "all" && "personal".includes(searchTitle.trim().toLowerCase() || "personal") ? (
-              <Link href="/tasks" className="block">
-                <Card
-                  size="sm"
-                  className="border-indigo-300/80 bg-indigo-50/70 transition-colors hover:bg-indigo-100/70"
-                >
-                  <CardHeader>
-                    <div className="flex items-center justify-between gap-2">
-                      <CardTitle>Personal</CardTitle>
-                      <Badge variant="secondary">Pinned</Badge>
-                    </div>
-                    <CardDescription>Personal tasks (not inside any board).</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{personalProgress}% done</span>
-                    <span>
-                      {personalDueDate ? `Due ${format(personalDueDate, "MMM d, yyyy")}` : "No due date"}
-                    </span>
-                  </CardContent>
-                  <CardContent className="pt-0">
-                    <Badge variant="outline">{personalTasks.length} tasks</Badge>
-                  </CardContent>
-                </Card>
-              </Link>
-            ) : null}
-
-            {visibleBoards.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No board found.</p>
-            ) : null}
-            {visibleBoards.map((board) => (
-              board.closedAt ? (
-                <Card
-                  key={board.id}
-                  size="sm"
-                  className={`relative overflow-hidden opacity-75 ${themeClassMap[board.theme] ?? "bg-muted/30"}`}
-                >
-                  <CardHeader>
-                    <div className="flex items-center justify-between gap-2">
-                      <CardTitle>{board.title}</CardTitle>
-                      <Badge variant="secondary">Closed</Badge>
-                    </div>
-                    <CardDescription>{board.description}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{boardProgressPercent(board)}% done</span>
-                    <span>
-                      {board.dueDate ? `Due ${format(new Date(board.dueDate), "MMM d, yyyy")}` : "No due date"}
-                    </span>
-                  </CardContent>
-                  {board.tags.length > 0 ? (
-                    <CardContent className="flex flex-wrap gap-1 pt-0">
-                      {board.tags.map((tag) => (
-                        <Badge key={tag} variant="outline">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </CardContent>
-                  ) : null}
-                  <div className="absolute inset-0 grid place-items-center bg-slate-900/35 backdrop-blur-[1px]">
-                    <span className="rounded-md border border-white/70 bg-black/45 px-3 py-1 text-sm font-semibold tracking-[0.2em] text-white">
-                      CLOSED
-                    </span>
-                  </div>
-                </Card>
-              ) : (
-                <div key={board.id} className="block">
+          viewMode === "board" ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {shouldShowPersonal ? (
+                <Link href="/tasks" className="block">
                   <Card
+                    size="sm"
+                    className="border-indigo-300/80 bg-indigo-50/70 transition-colors hover:bg-indigo-100/70"
+                  >
+                    <CardHeader>
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle>Personal</CardTitle>
+                        <Badge variant="secondary">Pinned</Badge>
+                      </div>
+                      <CardDescription>Personal tasks (not inside any board).</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{personalProgress}% done</span>
+                      <span>
+                        {personalDueDate ? `Due ${format(personalDueDate, "MMM d, yyyy")}` : "No due date"}
+                      </span>
+                    </CardContent>
+                    <CardContent className="pt-0">
+                      <Badge variant="outline">{personalTasks.length} tasks</Badge>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ) : null}
+
+              {visibleBoards.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No board found.</p>
+              ) : null}
+              {visibleBoards.map((board) =>
+                board.closedAt ? (
+                  <Card
+                    key={board.id}
+                    size="sm"
+                    className={`relative overflow-hidden opacity-75 ${themeClassMap[board.theme] ?? "bg-muted/30"}`}
+                  >
+                    <CardHeader>
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle>{board.title}</CardTitle>
+                        <Badge variant="secondary">Closed</Badge>
+                      </div>
+                      <CardDescription>{board.description}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{boardProgressPercent(board)}% done</span>
+                      <span>
+                        {board.dueDate ? `Due ${format(new Date(board.dueDate), "MMM d, yyyy")}` : "No due date"}
+                      </span>
+                    </CardContent>
+                    {board.tags.length > 0 ? (
+                      <CardContent className="flex flex-wrap gap-1 pt-0">
+                        {board.tags.map((tag) => (
+                          <Badge key={tag} variant="outline">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </CardContent>
+                    ) : null}
+                    <div className="absolute inset-0 grid place-items-center bg-slate-900/35 backdrop-blur-[1px]">
+                      <span className="rounded-md border border-white/70 bg-black/45 px-3 py-1 text-sm font-semibold tracking-[0.2em] text-white">
+                        CLOSED
+                      </span>
+                    </div>
+                  </Card>
+                ) : (
+                  <div key={board.id} className="block">
+                    <Card
+                      size="sm"
+                      className={`transition-colors hover:bg-muted/70 ${themeClassMap[board.theme] ?? "bg-muted/30"}`}
+                    >
+                      <CardHeader>
+                        <div className="flex items-start justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/boards/${board.id}`)}
+                            className="text-left"
+                          >
+                            <CardTitle>{board.title}</CardTitle>
+                          </button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void onTogglePin(board)}
+                            disabled={pinLoadingBoardId === board.id}
+                          >
+                            {board.isPinnedForUser ? (
+                              <PinOff data-icon="inline-start" />
+                            ) : (
+                              <Pin data-icon="inline-start" />
+                            )}
+                            {board.isPinnedForUser ? "Unpin" : "Pin"}
+                          </Button>
+                        </div>
+                        <CardDescription>{board.description}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{boardProgressPercent(board)}% done</span>
+                        <span>
+                          {board.dueDate ? `Due ${format(new Date(board.dueDate), "MMM d, yyyy")}` : "No due date"}
+                        </span>
+                      </CardContent>
+                      {board.tags.length > 0 ? (
+                        <CardContent className="flex flex-wrap gap-1 pt-0">
+                          {board.tags.map((tag) => (
+                            <Badge key={tag} variant="outline">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </CardContent>
+                      ) : null}
+                      <CardContent className="pt-0">
+                        <Button variant="ghost" size="sm" onClick={() => router.push(`/boards/${board.id}`)}>
+                          Open board
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {shouldShowPersonal ? (
+                <Link href="/tasks" className="block">
+                  <Card className="border-indigo-300/80 bg-indigo-50/70 transition-colors hover:bg-indigo-100/70">
+                    <CardHeader className="gap-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <CardTitle>Personal</CardTitle>
+                          <CardDescription>Personal tasks (not inside any board).</CardDescription>
+                        </div>
+                        <Badge variant="secondary">Pinned</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span>{personalProgress}% done</span>
+                        <span>
+                          {personalDueDate ? `Due ${format(personalDueDate, "MMM d, yyyy")}` : "No due date"}
+                        </span>
+                      </div>
+                      {renderProgressBar(personalProgress)}
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge variant="outline">{personalTasks.length} tasks</Badge>
+                        <span className="text-sm font-medium text-foreground">Open list</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ) : null}
+
+              {visibleBoards.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No board found.</p>
+              ) : null}
+
+              {visibleBoards.map((board) => {
+                const progress = boardProgressPercent(board);
+
+                if (board.closedAt) {
+                  return (
+                    <Card
+                      key={board.id}
+                      size="sm"
+                      className={`relative overflow-hidden opacity-75 ${themeClassMap[board.theme] ?? "bg-muted/30"}`}
+                    >
+                      <CardHeader className="gap-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <CardTitle>{board.title}</CardTitle>
+                            <CardDescription>{board.description}</CardDescription>
+                          </div>
+                          <Badge variant="secondary">Closed</Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <span>{progress}% done</span>
+                          <span>
+                            {board.dueDate ? `Due ${format(new Date(board.dueDate), "MMM d, yyyy")}` : "No due date"}
+                          </span>
+                        </div>
+                        {renderProgressBar(progress)}
+                        {board.tags.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {board.tags.map((tag) => (
+                              <Badge key={tag} variant="outline">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                      </CardContent>
+                      <div className="absolute inset-0 grid place-items-center bg-slate-900/35 backdrop-blur-[1px]">
+                        <span className="rounded-md border border-white/70 bg-black/45 px-3 py-1 text-sm font-semibold tracking-[0.2em] text-white">
+                          CLOSED
+                        </span>
+                      </div>
+                    </Card>
+                  );
+                }
+
+                return (
+                  <Card
+                    key={board.id}
                     size="sm"
                     className={`transition-colors hover:bg-muted/70 ${themeClassMap[board.theme] ?? "bg-muted/30"}`}
                   >
-                    <CardHeader>
-                      <div className="flex items-start justify-between gap-2">
+                    <CardHeader className="gap-2">
+                      <div className="flex items-start justify-between gap-3">
                         <button
                           type="button"
                           onClick={() => router.push(`/boards/${board.id}`)}
@@ -378,31 +577,34 @@ export default function AllBoardsPage() {
                       </div>
                       <CardDescription>{board.description}</CardDescription>
                     </CardHeader>
-                    <CardContent className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{boardProgressPercent(board)}% done</span>
-                      <span>
-                        {board.dueDate ? `Due ${format(new Date(board.dueDate), "MMM d, yyyy")}` : "No due date"}
-                      </span>
-                    </CardContent>
-                    {board.tags.length > 0 ? (
-                      <CardContent className="flex flex-wrap gap-1 pt-0">
-                        {board.tags.map((tag) => (
-                          <Badge key={tag} variant="outline">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </CardContent>
-                    ) : null}
-                    <CardContent className="pt-0">
-                      <Button variant="ghost" size="sm" onClick={() => router.push(`/boards/${board.id}`)}>
-                        Open board
-                      </Button>
+                    <CardContent className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span>{progress}% done</span>
+                        <span>
+                          {board.dueDate ? `Due ${format(new Date(board.dueDate), "MMM d, yyyy")}` : "No due date"}
+                        </span>
+                      </div>
+                      {renderProgressBar(progress)}
+                      {board.tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {board.tags.map((tag) => (
+                            <Badge key={tag} variant="outline">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="flex justify-end">
+                        <Button variant="ghost" size="sm" onClick={() => router.push(`/boards/${board.id}`)}>
+                          Open board
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
-                </div>
-              )
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )
         )}
       </main>
 
