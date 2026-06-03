@@ -5,12 +5,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ArrowLeft,
+  Banknote,
   Building2,
   FileText,
   FolderOpen,
   KanbanSquare,
   LayoutDashboard,
   PlusCircle,
+  ReceiptText,
   Settings,
   UsersRound,
 } from "lucide-react";
@@ -62,8 +64,10 @@ export function CompanyShell({
   const overviewHref = `/company/${company.id}`;
   const clientsHref = `/company/${company.id}/clients`;
   const leadsHref = `/company/${company.id}/leads`;
+  const expensesHref = `/company/${company.id}/expenses`;
   const projectsHref = `/company/${company.id}/projects`;
   const quotationsHref = `/company/${company.id}/quotations`;
+  const invoicesHref = `/company/${company.id}/invoices`;
   const settingsHref = `/company/${company.id}/settings`;
 
   const primaryNav: NavItem[] = isOnboarding
@@ -77,10 +81,16 @@ export function CompanyShell({
           : []),
         { href: leadsHref, label: "Leads", icon: KanbanSquare },
         ...(canManageSettings
+          ? [{ href: expensesHref, label: "Expense Manager", icon: Banknote }]
+          : []),
+        ...(canManageSettings
           ? [{ href: projectsHref, label: "Projects", icon: FolderOpen }]
           : []),
         ...(canManageSettings
           ? [{ href: quotationsHref, label: "Quotations", icon: FileText }]
+          : []),
+        ...(canManageSettings
+          ? [{ href: invoicesHref, label: "Invoices", icon: ReceiptText }]
           : []),
       ];
 

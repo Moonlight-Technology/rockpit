@@ -2,27 +2,17 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
-type QuotationStatus = "DRAFT" | "SENT" | "APPROVED" | "REJECTED";
-type QuotationDiscountType = "FIXED" | "PERCENTAGE";
-
-type QuotationEditorProps = {
-  leadId: string;
-  quotationId?: string;
-  initialStatus?: QuotationStatus;
-  initialDiscountType?: QuotationDiscountType;
-  initialDiscountValue?: number;
-  initialLines?: Array<{
+type InvoiceEditorProps = {
+  quotationId: string;
+  initialLines: Array<{
     description: string;
     quantity: number;
     unitPrice: number;
   }>;
-  title?: string;
-  description?: string;
-  submitLabel?: string;
-  bare?: boolean;
-  hideStatusField?: boolean;
-  reviveLead?: boolean;
+  quotationLabel: string;
+  prospectName: string;
 };
 
 const emptyLine = {
@@ -31,73 +21,56 @@ const emptyLine = {
   unitPrice: 0,
 };
 
-export function QuotationEditor({
-  leadId,
+export function InvoiceEditor({
   quotationId,
-  initialStatus = "DRAFT",
-  initialDiscountType = "FIXED",
-  initialDiscountValue = 0,
   initialLines,
-  title = "Quotation editor",
-  description = "Build line items and create a new quotation revision.",
-  submitLabel = "Save quotation",
-  bare = false,
-  hideStatusField = false,
-  reviveLead = false,
-}: QuotationEditorProps) {
+  quotationLabel,
+  prospectName,
+}: InvoiceEditorProps) {
   const router = useRouter();
   const params = useParams<{ companyId: string }>();
   const companyId = params.companyId;
   const [isPending, startTransition] = useTransition();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [status, setStatus] = useState<QuotationStatus>(initialStatus);
-  const [discountType, setDiscountType] = useState<QuotationDiscountType>(initialDiscountType);
-  const [discountValue, setDiscountValue] = useState(initialDiscountValue);
-  const [lines, setLines] = useState(() => (initialLines?.length ? initialLines : [emptyLine]));
+  const [lines, setLines] = useState(() => (initialLines.length ? initialLines : [emptyLine]));
+  const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const isBusy = isSubmitting || isPending;
+  const isBusy = isPending || isSubmitting;
 
   const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
-  const discountAmount =
-    discountType === "PERCENTAGE"
-      ? Math.min(Math.floor((subtotal * discountValue) / 100), subtotal)
-      : Math.min(discountValue, subtotal);
-  const total = Math.max(subtotal - discountAmount, 0);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isBusy) {
       return;
     }
+
     setError(null);
     setIsSubmitting(true);
 
-    const endpoint = quotationId
-      ? `/api/companies/${companyId}/quotations/${quotationId}`
-      : `/api/companies/${companyId}/quotations`;
-
-    const response = await fetch(endpoint, {
+    const response = await fetch(`/api/companies/${companyId}/invoices`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        leadId,
-        status,
+        quotationId,
         lines,
-        reviveLead,
-        discountType,
-        discountValue,
+        notes,
       }),
     });
+
     const result = await response.json().catch(() => null);
+    setIsSubmitting(false);
 
     if (!response.ok || !result?.ok) {
-      setError(result?.error?.message ?? "Unable to save quotation.");
-      setIsSubmitting(false);
+      const message = result?.error?.message ?? "Unable to create invoice.";
+      setError(message);
+      toast.error(message);
       return;
     }
 
+    toast.success(`Invoice created from ${quotationLabel}.`);
     startTransition(() => {
-      router.push(`/company/${companyId}/quotations/${result.data.id}`);
+      router.push(`/company/${companyId}/invoices/${result.data.id}`);
       router.refresh();
     });
   }
@@ -105,39 +78,13 @@ export function QuotationEditor({
   return (
     <form
       onSubmit={handleSubmit}
-      className={
-        bare
-          ? "text-card-foreground"
-          : "rounded-[28px] border border-border bg-card p-5 text-card-foreground"
-      }
+      className="rounded-[28px] border border-border bg-card p-5 text-card-foreground"
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        {title || description ? (
-          <div>
-            {title ? (
-              <h2 className="text-lg font-semibold text-card-foreground">{title}</h2>
-            ) : null}
-            {description ? (
-              <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-            ) : null}
-          </div>
-        ) : null}
-        {!hideStatusField ? (
-          <label className="grid gap-1 text-sm">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Status</span>
-            <select
-              value={status}
-              onChange={(event) => setStatus(event.target.value as QuotationStatus)}
-              disabled={isBusy}
-              className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
-            >
-              <option value="DRAFT">Draft</option>
-              <option value="SENT">Sent</option>
-              <option value="APPROVED">Approved</option>
-              <option value="REJECTED">Rejected</option>
-            </select>
-          </label>
-        ) : null}
+      <div>
+        <h2 className="text-lg font-semibold text-card-foreground">Create invoice</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Start from approved quotation {quotationLabel} for {prospectName}.
+        </p>
       </div>
 
       <div className="mt-5 space-y-3">
@@ -161,7 +108,7 @@ export function QuotationEditor({
                   )
                 }
                 className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
-                placeholder="Landing page design and implementation"
+                placeholder="DP tahap 1"
               />
             </label>
 
@@ -240,7 +187,7 @@ export function QuotationEditor({
         ))}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
         <button
           type="button"
           disabled={isBusy}
@@ -249,58 +196,38 @@ export function QuotationEditor({
         >
           Add line
         </button>
-        <div className="grid gap-3 rounded-2xl border border-border bg-muted/30 p-4 sm:grid-cols-[180px_minmax(0,1fr)]">
-          <label className="grid gap-1 text-sm">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              Discount type
-            </span>
-            <select
-              value={discountType}
-              onChange={(event) => setDiscountType(event.target.value as QuotationDiscountType)}
-              disabled={isBusy}
-              className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
-            >
-              <option value="FIXED">Nominal (Rp)</option>
-              <option value="PERCENTAGE">Percentage (%)</option>
-            </select>
-          </label>
 
-          <label className="grid gap-1 text-sm">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              {discountType === "PERCENTAGE" ? "Discount (%)" : "Discount (Rp)"}
-            </span>
-            <input
-              type="number"
-              min={0}
-              max={discountType === "PERCENTAGE" ? 100 : undefined}
-              value={discountValue}
-              disabled={isBusy}
-              onChange={(event) => setDiscountValue(Number(event.target.value || 0))}
-              className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none"
-            />
-          </label>
-        </div>
-        <div className="text-right">
+        <div className="min-w-[240px] rounded-2xl border border-border bg-muted/30 p-4 text-right">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Subtotal</p>
           <p className="text-lg font-semibold text-card-foreground">
             Rp{subtotal.toLocaleString("id-ID")}
           </p>
-          <p className="mt-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Discount {discountType === "PERCENTAGE" ? `(${discountValue}%)` : "(Rp)"}
-          </p>
-          <p className="text-sm text-muted-foreground">Rp{discountAmount.toLocaleString("id-ID")}</p>
           <p className="mt-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Total</p>
-          <p className="text-lg font-semibold text-card-foreground">Rp{total.toLocaleString("id-ID")}</p>
+          <p className="text-lg font-semibold text-card-foreground">
+            Rp{subtotal.toLocaleString("id-ID")}
+          </p>
         </div>
       </div>
+
+      <label className="mt-5 grid gap-1 text-sm">
+        <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Notes</span>
+        <textarea
+          value={notes}
+          disabled={isBusy}
+          onChange={(event) => setNotes(event.target.value)}
+          rows={4}
+          className="rounded-2xl border border-border bg-background px-3 py-3 text-foreground outline-none"
+          placeholder="Optional billing note, milestone summary, or delivery context."
+        />
+      </label>
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <button
           type="submit"
           disabled={isBusy}
-          className="rounded-full disabled:opacity-60"
+          className="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isBusy ? "Saving..." : submitLabel}
+          {isBusy ? "Creating..." : "Create invoice"}
         </button>
         {error ? <p className="text-sm text-rose-300">{error}</p> : null}
       </div>

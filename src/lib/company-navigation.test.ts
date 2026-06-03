@@ -23,3 +23,14 @@ test("isCompanyNavItemActive allows nested non-overview routes", () => {
     true
   );
 });
+
+test("isCompanyNavItemActive treats company expense manager as an active nested section", () => {
+  assert.equal(
+    isCompanyNavItemActive({
+      pathname: "/company/company-1/expenses",
+      href: "/company/company-1/expenses",
+      overviewHref: "/company/company-1",
+    }),
+    true
+  );
+});

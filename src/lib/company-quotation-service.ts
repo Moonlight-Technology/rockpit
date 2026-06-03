@@ -192,6 +192,30 @@ export function nextQuotationSequence(input: {
   return maxSequence + 1;
 }
 
+type DiscountType = "FIXED" | "PERCENTAGE";
+
+type QuotationLineCalculationInput = {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+};
+
+export function calculateQuotationTotals(input: {
+  lines: QuotationLineCalculationInput[];
+  discountType: DiscountType;
+  discountValue: number;
+}) {
+  const subtotal = input.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+  const rawDiscount =
+    input.discountType === "PERCENTAGE"
+      ? Math.floor((subtotal * input.discountValue) / 100)
+      : input.discountValue;
+  const discountAmount = Math.min(Math.max(rawDiscount, 0), subtotal);
+  const total = Math.max(subtotal - discountAmount, 0);
+
+  return { subtotal, discountAmount, total };
+}
+
 export function getIssuedAtForQuotationStatus(
   status: "DRAFT" | "SENT" | "APPROVED" | "REJECTED",
   now: Date
@@ -247,6 +271,46 @@ export function applyStatusTransition(input: {
   }
 
   return { changed: true, updates };
+}
+
+export async function syncLeadForApprovedQuotation(input: {
+  tx: Pick<Prisma.TransactionClient, "companyLead">;
+  leadId: string;
+  total: number;
+  now: Date;
+  leadStage: CompanyLeadStage;
+  boardColumns: Array<{ id: string; title: string }>;
+}) {
+  await input.tx.companyLead.update({
+    where: { id: input.leadId },
+    data: { estimatedValue: input.total },
+  });
+
+  if (input.leadStage === CompanyLeadStage.WON) {
+    return [] as QuotationWarning[];
+  }
+
+  const wonColumn = findStageColumn(input.boardColumns, CompanyLeadStage.WON);
+  if (!wonColumn) {
+    return [
+      {
+        code: "WON_COLUMN_MISSING",
+        message:
+          "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
+      },
+    ] satisfies QuotationWarning[];
+  }
+
+  await input.tx.companyLead.update({
+    where: { id: input.leadId },
+    data: {
+      column: { connect: { id: wonColumn.id } },
+      stage: CompanyLeadStage.WON,
+      wonAt: input.now,
+    },
+  });
+
+  return [] as QuotationWarning[];
 }
 
 function normalizeErrorTarget(target: unknown) {
@@ -364,10 +428,6 @@ async function getOwnerCompanyContext(
   return { company };
 }
 
-function sumQuotationLines(lines: Array<{ quantity: number; unitPrice: number }>) {
-  return lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
-}
-
 export async function listQuotationsForUser(
   userId: string,
   companyId: string
@@ -478,7 +538,11 @@ export async function createQuotationForUser(input: {
         });
       }
 
-      const subtotal = sumQuotationLines(parsed.lines);
+      const totals = calculateQuotationTotals({
+        lines: parsed.lines,
+        discountType: parsed.discountType,
+        discountValue: parsed.discountValue,
+      });
       const status = parsed.status;
       const issuedQuotationAt = getIssuedAtForQuotationStatus(status, issuedAt);
 
@@ -489,8 +553,11 @@ export async function createQuotationForUser(input: {
           quotationNumber,
           revisionNumber,
           status,
-          subtotal,
-          total: subtotal,
+          subtotal: totals.subtotal,
+          discountType: parsed.discountType,
+          discountValue: parsed.discountValue,
+          discountAmount: totals.discountAmount,
+          total: totals.total,
           issuedAt: issuedQuotationAt,
           createdByUserId: input.userId,
           lines: {
@@ -506,30 +573,17 @@ export async function createQuotationForUser(input: {
         include: quotationDetailInclude,
       });
 
-      const warnings: QuotationWarning[] = [];
-
-      if (status === "APPROVED" && lead.stage !== CompanyLeadStage.WON) {
-        const wonColumn = findStageColumn(
-          lead.leadBoard.columns,
-          CompanyLeadStage.WON
-        );
-        if (wonColumn) {
-          await tx.companyLead.update({
-            where: { id: lead.id },
-            data: {
-              column: { connect: { id: wonColumn.id } },
-              stage: CompanyLeadStage.WON,
-              wonAt: issuedAt,
-            },
-          });
-        } else {
-          warnings.push({
-            code: "WON_COLUMN_MISSING",
-            message:
-              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
-          });
-        }
-      }
+      const warnings =
+        status === "APPROVED"
+          ? await syncLeadForApprovedQuotation({
+              tx,
+              leadId: lead.id,
+              total: quotation.total,
+              now: issuedAt,
+              leadStage: lead.stage,
+              boardColumns: lead.leadBoard.columns,
+            })
+          : [];
 
       return { data: quotation, warnings };
     })
@@ -618,7 +672,11 @@ export async function createQuotationRevisionForUser(input: {
         select: { revisionNumber: true },
       });
 
-      const subtotal = sumQuotationLines(parsed.lines);
+      const totals = calculateQuotationTotals({
+        lines: parsed.lines,
+        discountType: parsed.discountType,
+        discountValue: parsed.discountValue,
+      });
       const issuedAt = new Date();
       const status = parsed.status;
       const issuedQuotationAt = getIssuedAtForQuotationStatus(status, issuedAt);
@@ -630,8 +688,11 @@ export async function createQuotationRevisionForUser(input: {
           quotationNumber: sourceQuotation.quotationNumber,
           revisionNumber: nextRevisionNumber(latestRevision ? [latestRevision] : []),
           status,
-          subtotal,
-          total: subtotal,
+          subtotal: totals.subtotal,
+          discountType: parsed.discountType,
+          discountValue: parsed.discountValue,
+          discountAmount: totals.discountAmount,
+          total: totals.total,
           issuedAt: issuedQuotationAt,
           createdByUserId: input.userId,
           lines: {
@@ -647,30 +708,17 @@ export async function createQuotationRevisionForUser(input: {
         include: quotationDetailInclude,
       });
 
-      const warnings: QuotationWarning[] = [];
-
-      if (status === "APPROVED" && lead.stage !== CompanyLeadStage.WON) {
-        const wonColumn = findStageColumn(
-          lead.leadBoard.columns,
-          CompanyLeadStage.WON
-        );
-        if (wonColumn) {
-          await tx.companyLead.update({
-            where: { id: lead.id },
-            data: {
-              column: { connect: { id: wonColumn.id } },
-              stage: CompanyLeadStage.WON,
-              wonAt: issuedAt,
-            },
-          });
-        } else {
-          warnings.push({
-            code: "WON_COLUMN_MISSING",
-            message:
-              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
-          });
-        }
-      }
+      const warnings =
+        status === "APPROVED"
+          ? await syncLeadForApprovedQuotation({
+              tx,
+              leadId: lead.id,
+              total: quotation.total,
+              now: issuedAt,
+              leadStage: lead.stage,
+              boardColumns: lead.leadBoard.columns,
+            })
+          : [];
 
       return { data: quotation, warnings };
     })
@@ -753,7 +801,7 @@ export async function updateQuotationStatusForUser(input: {
       now,
     });
 
-    const warnings: QuotationWarning[] = [];
+    let warnings: QuotationWarning[] = [];
 
     if (!transition.changed) {
       const current = await tx.companyQuotation.findFirst({
@@ -784,24 +832,15 @@ export async function updateQuotationStatusForUser(input: {
         },
       });
 
-      if (lead && lead.stage !== CompanyLeadStage.WON) {
-        const wonColumn = findStageColumn(lead.leadBoard.columns, CompanyLeadStage.WON);
-        if (wonColumn) {
-          await tx.companyLead.update({
-            where: { id: lead.id },
-            data: {
-              column: { connect: { id: wonColumn.id } },
-              stage: CompanyLeadStage.WON,
-              wonAt: now,
-            },
-          });
-        } else {
-          warnings.push({
-            code: "WON_COLUMN_MISSING",
-            message:
-              "Quotation approved, but the 'Won' column was not found in this board. Move the lead manually.",
-          });
-        }
+      if (lead) {
+        warnings = await syncLeadForApprovedQuotation({
+          tx,
+          leadId: lead.id,
+          total: updated.total,
+          now,
+          leadStage: lead.stage,
+          boardColumns: lead.leadBoard.columns,
+        });
       }
     }
 
