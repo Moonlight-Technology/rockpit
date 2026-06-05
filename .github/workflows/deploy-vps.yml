@@ -74,6 +74,17 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/main'
     steps:
+      - name: Debug SSH reachability
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          set -e
+
+          echo "Testing TCP reachability to ${VPS_HOST}:${VPS_PORT}"
+          timeout 10 bash -lc "cat < /dev/null > /dev/tcp/${VPS_HOST}/${VPS_PORT}"
+          echo "TCP reachability check passed"
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
