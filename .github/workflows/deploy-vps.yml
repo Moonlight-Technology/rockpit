@@ -88,6 +88,10 @@ jobs:
 
             mkdir -p "$APP_DIR"
 
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+              --username "${{ github.actor }}" \
+              --password-stdin
+
             cat > "$APP_DIR/docker-compose.prod.yml" <<COMPOSE
             services:
               rockpit:
@@ -105,4 +109,5 @@ jobs:
             docker compose -f "$APP_DIR/docker-compose.prod.yml" pull
             docker compose -f "$APP_DIR/docker-compose.prod.yml" up -d --remove-orphans
             docker image prune -f
+            docker logout ghcr.io
             docker compose -f "$APP_DIR/docker-compose.prod.yml" ps
