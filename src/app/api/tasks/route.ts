@@ -22,6 +22,8 @@ export async function POST(req: Request) {
     priority: parsed.data.priority
       ? TaskPriority[parsed.data.priority]
       : TaskPriority.MEDIUM,
+    trackedByTimer: parsed.data.trackedByTimer ?? false,
+    actualDurationMinutes: parsed.data.actualDurationMinutes ?? null,
   });
 
   return NextResponse.json({ ok: true, data: task }, { status: 201 });

@@ -29,6 +29,8 @@ export async function POST(
       priority: parsed.data.priority
         ? TaskPriority[parsed.data.priority]
         : TaskPriority.MEDIUM,
+      trackedByTimer: parsed.data.trackedByTimer ?? false,
+      actualDurationMinutes: parsed.data.actualDurationMinutes ?? null,
       assigneeIds:
         parsed.data.assigneeIds && parsed.data.assigneeIds.length > 0
           ? parsed.data.assigneeIds

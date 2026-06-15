@@ -622,6 +622,8 @@ export async function addTaskToBoard(input: {
   priority?: TaskPriority;
   assigneeId?: string | null;
   assigneeIds?: string[];
+  trackedByTimer?: boolean;
+  actualDurationMinutes?: number | null;
   status?: "TODO" | "DONE";
 }) {
   const access = await canAccessBoard(input.userId, input.boardId);
@@ -668,6 +670,8 @@ export async function addTaskToBoard(input: {
       description: input.description ?? null,
       startDate: input.startDate ? new Date(input.startDate) : null,
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
+      trackedByTimer: input.trackedByTimer ?? false,
+      actualDurationMinutes: input.actualDurationMinutes ?? null,
       priority: input.priority ?? TaskPriority.MEDIUM,
       status: input.status ?? (isDoneColumnTitle(column.title) ? "DONE" : "TODO"),
       completedAt:
@@ -695,6 +699,8 @@ export async function createStandaloneTaskForUser(input: {
   startDate?: string | null;
   dueDate?: string | null;
   priority?: TaskPriority;
+  trackedByTimer?: boolean;
+  actualDurationMinutes?: number | null;
 }) {
   return prisma.task.create({
     data: {
@@ -711,6 +717,8 @@ export async function createStandaloneTaskForUser(input: {
       description: input.description ?? null,
       startDate: input.startDate ? new Date(input.startDate) : null,
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
+      trackedByTimer: input.trackedByTimer ?? false,
+      actualDurationMinutes: input.actualDurationMinutes ?? null,
       priority: input.priority ?? TaskPriority.MEDIUM,
       status: "TODO",
       position: 0,
