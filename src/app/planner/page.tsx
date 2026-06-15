@@ -24,6 +24,7 @@ import {
   type TaskDatePickerTarget,
   type TaskDatePickerValue,
 } from "@/components/task-date-picker-panel";
+import { formatFocusMinutes, summarizeDailyFocus } from "@/lib/planner-focus";
 
 type Task = {
   id: string;
@@ -37,6 +38,8 @@ type Task = {
   dueDate: string | null;
   plannedStartAt: string | null;
   plannedDurationMinutes: number | null;
+  trackedByTimer: boolean;
+  actualDurationMinutes: number | null;
   assignee: { id: string; name: string; email: string } | null;
   assignees?: Array<{ user: { id: string; name: string; email: string } }>;
   column: { id: string; title: string } | null;
@@ -87,6 +90,7 @@ type ResizeState = {
 const START_HOUR = 6;
 const END_HOUR_EXCLUSIVE = 24;
 const ROW_HEIGHT = 56;
+const HALF_HOUR_LINE_OFFSET = ROW_HEIGHT / 2;
 
 const initialTaskForm: AddTaskForm = {
   title: "",
@@ -388,6 +392,7 @@ function PlannerPageContent() {
       ),
     [dueOnSelectedDateRightPanel, selectedDate]
   );
+  const focusSummary = useMemo(() => summarizeDailyFocus(tasks, selectedDate), [tasks, selectedDate]);
 
   const selectedScheduledTask = useMemo(
     () => scheduledBlocks.find((task) => task.id === selectedScheduledTaskId) ?? null,
@@ -912,6 +917,8 @@ function PlannerPageContent() {
               startDate: timerStartAt.toISOString(),
               dueDate: endAt.toISOString(),
               priority: timerPriority,
+              trackedByTimer: true,
+              actualDurationMinutes: durationMinutes,
             }),
           })
         : await fetch("/api/tasks", {
@@ -923,6 +930,8 @@ function PlannerPageContent() {
               startDate: timerStartAt.toISOString(),
               dueDate: endAt.toISOString(),
               priority: timerPriority,
+              trackedByTimer: true,
+              actualDurationMinutes: durationMinutes,
             }),
           });
 
@@ -1122,7 +1131,14 @@ function PlannerPageContent() {
                     style={{ top: `${12 + idx * ROW_HEIGHT}px`, height: `${ROW_HEIGHT}px` }}
                   >
                     <div className="pt-1 text-xs text-muted-foreground">{hourLabel(hour)}</div>
-                    <div className="h-full border-l" />
+                    <div className="relative h-full border-l">
+                      {idx < hours.length - 1 ? (
+                        <div
+                          className="absolute inset-x-0 border-t border-dashed border-border/70"
+                          style={{ top: `${HALF_HOUR_LINE_OFFSET}px` }}
+                        />
+                      ) : null}
+                    </div>
                   </div>
                 ))}
 
@@ -1306,152 +1322,186 @@ function PlannerPageContent() {
                 {timerSaving ? <p className="text-sm text-muted-foreground">Saving timer task...</p> : null}
               </CardContent>
             </Card>
-          ) : (
-            <Card
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                const taskId =
-                  event.dataTransfer.getData("text/task-id") || event.dataTransfer.getData("text/plain");
-                if (!taskId) return;
-                void unscheduleTask(taskId);
-              }}
-            >
-              <CardHeader>
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <CardTitle>Tasks ({format(selectedDate, "MMM d")})</CardTitle>
-                    <CardDescription>Due date sesuai hari yang dipilih.</CardDescription>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <label className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs text-muted-foreground">
+          ) : null}
+
+          <Card
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const taskId =
+                event.dataTransfer.getData("text/task-id") || event.dataTransfer.getData("text/plain");
+              if (!taskId) return;
+              void unscheduleTask(taskId);
+            }}
+          >
+            <CardHeader>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <CardTitle>Tasks ({format(selectedDate, "MMM d")})</CardTitle>
+                  <CardDescription>Due date sesuai hari yang dipilih.</CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <label className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs text-muted-foreground">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={includeOverdueTasks}
+                      onClick={() => setIncludeOverdueTasks((prev) => !prev)}
+                      className={`relative h-5 w-9 rounded-full transition ${
+                        includeOverdueTasks ? "bg-primary" : "bg-muted"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 size-4 rounded-full bg-background shadow transition ${
+                          includeOverdueTasks ? "left-4" : "left-0.5"
+                        }`}
+                      />
+                    </button>
+                    Due + overdue
+                  </label>
+                  {focusBoardId ? (
+                    <div className="inline-flex rounded-md border bg-background p-1">
                       <button
                         type="button"
-                        role="switch"
-                        aria-checked={includeOverdueTasks}
-                        onClick={() => setIncludeOverdueTasks((prev) => !prev)}
-                        className={`relative h-5 w-9 rounded-full transition ${
-                          includeOverdueTasks ? "bg-primary" : "bg-muted"
+                        onClick={() => setPlannerScope("focus")}
+                        className={`rounded px-2.5 py-1 text-xs ${
+                          rightPanelScope === "focus"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-muted"
                         }`}
                       >
-                        <span
-                          className={`absolute top-0.5 size-4 rounded-full bg-background shadow transition ${
-                            includeOverdueTasks ? "left-4" : "left-0.5"
-                          }`}
-                        />
+                        Board + Personal
                       </button>
-                      Due + overdue
-                    </label>
-                    {focusBoardId ? (
-                      <div className="inline-flex rounded-md border bg-background p-1">
-                        <button
-                          type="button"
-                          onClick={() => setPlannerScope("focus")}
-                          className={`rounded px-2.5 py-1 text-xs ${
-                            rightPanelScope === "focus"
-                              ? "bg-primary text-primary-foreground"
-                              : "text-muted-foreground hover:bg-muted"
-                          }`}
-                        >
-                          Board + Personal
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPlannerScope("all")}
-                          className={`rounded px-2.5 py-1 text-xs ${
-                            rightPanelScope === "all"
-                              ? "bg-primary text-primary-foreground"
-                              : "text-muted-foreground hover:bg-muted"
-                          }`}
-                        >
-                          All boards
-                        </button>
-                      </div>
-                    ) : null}
-                    <Button size="sm" onClick={openAddTaskModal}>
-                      <Plus data-icon="inline-start" />
-                      Add Task
-                    </Button>
+                      <button
+                        type="button"
+                        onClick={() => setPlannerScope("all")}
+                        className={`rounded px-2.5 py-1 text-xs ${
+                          rightPanelScope === "all"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-muted"
+                        }`}
+                      >
+                        All boards
+                      </button>
+                    </div>
+                  ) : null}
+                  <Button size="sm" onClick={openAddTaskModal}>
+                    <Plus data-icon="inline-start" />
+                    Add Task
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {loading ? <p className="text-sm text-muted-foreground">Loading tasks...</p> : null}
+              {!loading && unscheduledTasks.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Semua task hari ini sudah terjadwal.</p>
+              ) : null}
+
+              {unscheduledTasks.map((task) => (
+                <button
+                  key={task.id}
+                  type="button"
+                  draggable
+                  onClick={() => openEditTaskModal(task)}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/task-id", task.id);
+                    event.dataTransfer.setData("text/plain", task.id);
+                  }}
+                  className="w-full rounded-lg border bg-card px-3 py-2 text-left hover:bg-muted/50"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{task.title}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline">{getTaskContext(task)}</Badge>
+                      <Badge
+                        variant={
+                          task.priority === "HIGH"
+                            ? "destructive"
+                            : task.priority === "MEDIUM"
+                              ? "secondary"
+                              : "outline"
+                        }
+                      >
+                        {task.priority}
+                      </Badge>
+                    </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {loading ? <p className="text-sm text-muted-foreground">Loading tasks...</p> : null}
-                {!loading && unscheduledTasks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Semua task hari ini sudah terjadwal.</p>
-                ) : null}
-
-                {unscheduledTasks.map((task) => (
-                  <button
-                    key={task.id}
-                    type="button"
-                    draggable
-                    onClick={() => openEditTaskModal(task)}
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/task-id", task.id);
-                      event.dataTransfer.setData("text/plain", task.id);
-                    }}
-                    className="w-full rounded-lg border bg-card px-3 py-2 text-left hover:bg-muted/50"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium">{task.title}</span>
-                      <div className="flex items-center gap-1.5">
-                        <Badge variant="outline">{getTaskContext(task)}</Badge>
-                        <Badge
-                          variant={
-                            task.priority === "HIGH"
-                              ? "destructive"
-                              : task.priority === "MEDIUM"
-                                ? "secondary"
-                                : "outline"
-                          }
-                        >
-                          {task.priority}
-                        </Badge>
-                      </div>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {task.board?.title ?? "Personal Task"}
-                      {savingTaskId === task.id ? " • Saving..." : ""}
-                    </p>
-                  </button>
-                ))}
-
-                <div className="mt-4 rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Created by you, unassigned ({createdUnassignedForRightPanel.length})
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {task.board?.title ?? "Personal Task"}
+                    {savingTaskId === task.id ? " • Saving..." : ""}
                   </p>
-                  {createdUnassignedForRightPanel.length === 0 ? (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      No unassigned tasks created by you for this date.
+                </button>
+              ))}
+
+              <div className="mt-4 rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Created by you, unassigned ({createdUnassignedForRightPanel.length})
+                </p>
+                {createdUnassignedForRightPanel.length === 0 ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    No unassigned tasks created by you for this date.
+                  </p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {createdUnassignedForRightPanel.map((task) => (
+                      <button
+                        key={task.id}
+                        type="button"
+                        onClick={() => {
+                          void openAssignOnlyModal(task);
+                        }}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-left hover:bg-muted/50"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium">{task.title}</span>
+                          <Badge variant="outline">Unassigned</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {task.board?.title ?? "Personal Task"}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {timerModeEnabled ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Focus Time Today</CardTitle>
+                <CardDescription>
+                  Logged focus time for {format(selectedDate, "MMM d, yyyy")}.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-end justify-between gap-3 rounded-xl border bg-muted/20 p-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Total Focus
                     </p>
-                  ) : (
-                    <div className="mt-2 space-y-2">
-                      {createdUnassignedForRightPanel.map((task) => (
-                        <button
-                          key={task.id}
-                          type="button"
-                          onClick={() => {
-                            void openAssignOnlyModal(task);
-                          }}
-                          className="w-full rounded-md border bg-background px-3 py-2 text-left hover:bg-muted/50"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-medium">{task.title}</span>
-                            <Badge variant="outline">Unassigned</Badge>
-                          </div>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {task.board?.title ?? "Personal Task"}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                    <p className="text-2xl font-semibold text-zinc-900">
+                      {formatFocusMinutes(focusSummary.totalFocusMinutes)}
+                    </p>
+                  </div>
+                  <Badge variant="outline">{focusSummary.sessionCount} sesi</Badge>
                 </div>
+
+                {focusSummary.sessionCount === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Belum ada focus time tercatat hari ini.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Timer Mode sudah mencatat {focusSummary.sessionCount} sesi fokus untuk hari ini.
+                  </p>
+                )}
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </section>
       </main>
 
