@@ -420,6 +420,8 @@ model Task {
   dueDate                DateTime?
   plannedStartAt         DateTime?
   plannedDurationMinutes Int?
+  trackedByTimer         Boolean          @default(false)
+  actualDurationMinutes  Int?
   priority               TaskPriority     @default(MEDIUM)
   status                 TaskStatus       @default(TODO)
   completedAt            DateTime?

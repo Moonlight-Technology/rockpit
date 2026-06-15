@@ -2,6 +2,10 @@ import { z } from "zod";
 
 const priorityEnum = z.enum(["LOW", "MEDIUM", "HIGH"]);
 const statusEnum = z.enum(["TODO", "DONE"]);
+const timerMetadataSchema = {
+  trackedByTimer: z.boolean().optional(),
+  actualDurationMinutes: z.number().int().min(1).max(24 * 60).optional().nullable(),
+};
 
 export const createBoardSchema = z.object({
   title: z.string().trim().min(2).max(120),
@@ -34,6 +38,7 @@ export const addTaskSchema = z.object({
   priority: priorityEnum.optional(),
   assigneeId: z.string().cuid().optional().nullable(),
   assigneeIds: z.array(z.string().cuid()).max(20).optional(),
+  ...timerMetadataSchema,
 });
 
 export const reorderTaskSchema = z.object({
@@ -69,6 +74,7 @@ export const createStandaloneTaskSchema = z.object({
   startDate: z.string().datetime().optional().nullable(),
   dueDate: z.string().datetime().optional().nullable(),
   priority: priorityEnum.optional(),
+  ...timerMetadataSchema,
 });
 
 export const updateBoardSchema = z.object({
