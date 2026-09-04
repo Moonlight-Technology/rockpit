@@ -68,6 +68,14 @@ export const updateTaskScheduleSchema = z.object({
   plannedDurationMinutes: z.number().int().min(30).max(12 * 60).nullable().optional(),
 });
 
+export const updateTaskDependenciesSchema = z.object({
+  dependsOnTaskIds: z.array(z.string().cuid()).max(100).superRefine((ids, ctx) => {
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({ code: "custom", message: "Dependency ids must be unique." });
+    }
+  }),
+});
+
 export const createStandaloneTaskSchema = z.object({
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(1000).optional().nullable(),

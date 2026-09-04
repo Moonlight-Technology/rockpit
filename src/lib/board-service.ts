@@ -1,5 +1,6 @@
 import { BoardRole, Prisma, TaskPriority, WorkspaceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { hasDependencyCycle } from "@/lib/critical-path";
 
 const defaultColumns = ["To Do", "In Progress", "Done"];
 const DONE_COLUMN_TITLE = "done";
@@ -730,6 +731,57 @@ export async function createStandaloneTaskForUser(input: {
   });
 }
 
+export async function replaceTaskDependenciesForUser(input: {
+  userId: string;
+  taskId: string;
+  dependsOnTaskIds: string[];
+}) {
+  const task = await prisma.task.findFirst({
+    where: {
+      id: input.taskId,
+      boardId: { not: null },
+      board: { closedAt: null, OR: [{ ownerId: input.userId }, { members: { some: { userId: input.userId } } }] },
+    },
+    select: { id: true, boardId: true },
+  });
+  if (!task?.boardId) return { ok: false as const, code: "NOT_FOUND" as const, message: "Task not found." };
+  if (input.dependsOnTaskIds.includes(task.id)) {
+    return { ok: false as const, code: "INVALID_DEPENDENCY" as const, message: "A task cannot depend on itself." };
+  }
+
+  const prerequisites = await prisma.task.findMany({
+    where: { id: { in: input.dependsOnTaskIds }, boardId: task.boardId },
+    select: { id: true },
+  });
+  if (prerequisites.length !== input.dependsOnTaskIds.length) {
+    return { ok: false as const, code: "INVALID_DEPENDENCY" as const, message: "Dependencies must belong to the same board." };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const boardTasks = await tx.task.findMany({ where: { boardId: task.boardId }, select: { id: true } });
+    const currentEdges = await tx.taskDependency.findMany({
+      where: { task: { boardId: task.boardId } },
+      select: { taskId: true, dependsOnTaskId: true },
+    });
+    const proposedEdges = [
+      ...currentEdges.filter((edge) => edge.taskId !== task.id),
+      ...input.dependsOnTaskIds.map((dependsOnTaskId) => ({ taskId: task.id, dependsOnTaskId })),
+    ];
+    if (hasDependencyCycle(boardTasks.map((boardTask) => boardTask.id), proposedEdges)) {
+      return { ok: false as const, code: "CYCLE" as const, message: "This dependency would create a cycle." };
+    }
+    await tx.taskDependency.deleteMany({ where: { taskId: task.id } });
+    if (input.dependsOnTaskIds.length) {
+      await tx.taskDependency.createMany({ data: input.dependsOnTaskIds.map((dependsOnTaskId) => ({ taskId: task.id, dependsOnTaskId })) });
+    }
+    const updatedTask = await tx.task.findUniqueOrThrow({
+      where: { id: task.id },
+      include: { dependencies: { include: { dependsOnTask: { select: { id: true, title: true, startDate: true, dueDate: true, status: true } } } } },
+    });
+    return { ok: true as const, task: updatedTask };
+  });
+}
+
 export async function listAssignedTasksForUser(userId: string) {
   return prisma.task.findMany({
     where: {
@@ -803,6 +855,13 @@ export async function listAllTasksForUser(userId: string) {
         include: {
           user: {
             select: { id: true, name: true, email: true, avatarUrl: true },
+          },
+        },
+      },
+      dependencies: {
+        include: {
+          dependsOnTask: {
+            select: { id: true, title: true, startDate: true, dueDate: true, status: true },
           },
         },
       },
