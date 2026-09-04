@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { ContextPanel } from "@/components/helicopter/context-panel";
 import { RiskTimelinePanel } from "@/components/helicopter/risk-timeline-panel";
+import { CriticalPathPanel } from "@/components/helicopter/critical-path-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -37,12 +38,14 @@ type Task = {
   id: string;
   title: string;
   description: string | null;
+  startDate: string | null;
   dueDate: string | null;
   priority: "LOW" | "MEDIUM" | "HIGH";
   status: "TODO" | "DONE";
   board: { id: string; title: string; theme?: string | null } | null;
   column: { id: string; title: string } | null;
   assignee: { id: string; name: string; email: string } | null;
+  dependencies: Array<{ dependsOnTaskId: string }>;
 };
 
 type BoardOption = {
@@ -113,6 +116,7 @@ export default function HelicopterPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [criticalBoardId, setCriticalBoardId] = useState("");
   const [selectedRiskBucket, setSelectedRiskBucket] = useState<RiskBucketId>("today");
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState("");
@@ -219,6 +223,24 @@ export default function HelicopterPage() {
     });
     return Array.from(rows.entries()).map(([id, title]) => ({ id, title }));
   }, [tasks]);
+  const criticalTasks = useMemo(
+    () => tasks.filter((task) => task.board?.id === criticalBoardId),
+    [criticalBoardId, tasks]
+  );
+
+  const saveTaskDependencies = async (taskId: string, dependsOnTaskIds: string[]) => {
+    const response = await fetch(`/api/tasks/${taskId}/dependencies`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dependsOnTaskIds }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.ok) {
+      return { error: result?.error?.message ?? result?.error ?? "Failed to save dependencies." };
+    }
+    await fetchTasks({ showLoading: false });
+    return {};
+  };
 
   const listTasks = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -485,6 +507,7 @@ export default function HelicopterPage() {
               <TabsTrigger value="list">List</TabsTrigger>
               <TabsTrigger value="timeline">Timeline</TabsTrigger>
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
+              <TabsTrigger value="critical-path">Critical Path</TabsTrigger>
             </TabsList>
 
             <TabsContent value="dashboard" className="pt-2">
@@ -508,6 +531,19 @@ export default function HelicopterPage() {
                   }}
                 />
               </div>
+            </TabsContent>
+
+            <TabsContent value="critical-path" className="pt-2">
+              <Card>
+                <CardHeader><CardTitle>Critical Path</CardTitle><CardDescription>Define same-board dependencies and see work that can run in parallel.</CardDescription></CardHeader>
+                <CardContent className="space-y-4">
+                  <select value={criticalBoardId} onChange={(event) => setCriticalBoardId(event.target.value)} className="h-10 w-full max-w-sm rounded-md border bg-background px-3 text-sm">
+                    <option value="">Select a board</option>
+                    {boards.map((board) => <option key={board.id} value={board.id}>{board.title}</option>)}
+                  </select>
+                  {criticalBoardId ? <CriticalPathPanel tasks={criticalTasks} onSave={saveTaskDependencies} /> : <p className="text-sm text-muted-foreground">Select a board to manage its dependency network.</p>}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="list" className="pt-2">
