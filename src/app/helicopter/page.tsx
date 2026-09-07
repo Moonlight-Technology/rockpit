@@ -33,6 +33,7 @@ import {
   buildHelicopterDashboardData,
   type RiskBucketId,
 } from "@/lib/helicopter-dashboard";
+import { toTaskDatePayload } from "@/lib/task-date-payload";
 
 type Task = {
   id: string;
@@ -61,6 +62,7 @@ type ColumnOption = {
 type TaskFormState = {
   title: string;
   description: string;
+  startDate: string;
   dueDate: string;
   priority: "HIGH" | "MEDIUM" | "LOW";
   boardId: string;
@@ -137,6 +139,7 @@ export default function HelicopterPage() {
   const [taskForm, setTaskForm] = useState<TaskFormState>({
     title: "",
     description: "",
+    startDate: format(new Date(), "yyyy-MM-dd"),
     dueDate: format(new Date(), "yyyy-MM-dd"),
     priority: "MEDIUM",
     boardId: "",
@@ -360,6 +363,7 @@ export default function HelicopterPage() {
     setTaskForm({
       title: "",
       description: "",
+      startDate: format(new Date(), "yyyy-MM-dd"),
       dueDate: format(new Date(), "yyyy-MM-dd"),
       priority: "MEDIUM",
       boardId: "",
@@ -375,6 +379,7 @@ export default function HelicopterPage() {
     setTaskForm({
       title: task.title,
       description: task.description ?? "",
+      startDate: task.startDate ? format(new Date(task.startDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
       dueDate: task.dueDate ? format(new Date(task.dueDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
       priority: task.priority,
       boardId: task.board?.id ?? "",
@@ -414,7 +419,7 @@ export default function HelicopterPage() {
     const payloadBase = {
       title: taskForm.title.trim(),
       description: taskForm.description.trim() || null,
-      dueDate: new Date(`${taskForm.dueDate}T12:00:00`).toISOString(),
+      ...toTaskDatePayload(taskForm.startDate, taskForm.dueDate),
       priority: taskForm.priority,
     };
 
@@ -439,7 +444,6 @@ export default function HelicopterPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               ...payloadBase,
-              startDate: null,
               boardId: taskForm.boardId || null,
               columnId: taskForm.boardId ? taskForm.columnId || null : null,
             }),
@@ -541,7 +545,7 @@ export default function HelicopterPage() {
                     <option value="">Select a board</option>
                     {boards.map((board) => <option key={board.id} value={board.id}>{board.title}</option>)}
                   </select>
-                  {criticalBoardId ? <CriticalPathPanel tasks={criticalTasks} onSave={saveTaskDependencies} /> : <p className="text-sm text-muted-foreground">Select a board to manage its dependency network.</p>}
+                  {criticalBoardId ? <CriticalPathPanel tasks={criticalTasks} onSave={saveTaskDependencies} onEditTask={(taskId) => { const task = tasks.find((item) => item.id === taskId); if (task) void openEditTaskModal(task); }} /> : <p className="text-sm text-muted-foreground">Select a board to manage its dependency network.</p>}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -880,6 +884,16 @@ export default function HelicopterPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <input
                   type="date"
+                  aria-label="Start date"
+                  value={taskForm.startDate}
+                  onChange={(event) =>
+                    setTaskForm((prev) => ({ ...prev, startDate: event.target.value }))
+                  }
+                  className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+                <input
+                  type="date"
+                  aria-label="Due date"
                   value={taskForm.dueDate}
                   onChange={(event) =>
                     setTaskForm((prev) => ({ ...prev, dueDate: event.target.value }))
