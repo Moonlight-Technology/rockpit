@@ -641,7 +641,6 @@ export default function HelicopterPage() {
                               onSort={toggleListSort}
                             />
                           </th>
-                          <th className="px-3 py-3 font-medium">Dependency</th>
                           <th className="px-3 py-3 font-medium">
                             <SortableHeader
                               label="Board"
@@ -682,6 +681,7 @@ export default function HelicopterPage() {
                               onSort={toggleListSort}
                             />
                           </th>
+                          <th className="px-3 py-3 font-medium">Dependency</th>
                         </tr>
                       </thead>
                       <tbody>
