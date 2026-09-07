@@ -34,6 +34,7 @@ import {
   type RiskBucketId,
 } from "@/lib/helicopter-dashboard";
 import { toTaskDatePayload } from "@/lib/task-date-payload";
+import { getSameBoardDependencyCandidates } from "@/lib/task-dependency-candidates";
 
 type Task = {
   id: string;
@@ -128,6 +129,7 @@ export default function HelicopterPage() {
     direction: "asc",
   });
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  const [dependencyEditingTaskId, setDependencyEditingTaskId] = useState<string | null>(null);
   const [boards, setBoards] = useState<BoardOption[]>([]);
   const [columnOptions, setColumnOptions] = useState<ColumnOption[]>([]);
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -243,6 +245,12 @@ export default function HelicopterPage() {
     }
     await fetchTasks({ showLoading: false });
     return {};
+  };
+
+  const saveListDependencies = async (formData: FormData) => {
+    if (!dependencyEditingTaskId) return;
+    const result = await saveTaskDependencies(dependencyEditingTaskId, formData.getAll("dependency").map(String));
+    if (!result.error) setDependencyEditingTaskId(null);
   };
 
   const listTasks = useMemo(() => {
@@ -633,6 +641,7 @@ export default function HelicopterPage() {
                               onSort={toggleListSort}
                             />
                           </th>
+                          <th className="px-3 py-3 font-medium">Dependency</th>
                           <th className="px-3 py-3 font-medium">
                             <SortableHeader
                               label="Board"
@@ -714,11 +723,24 @@ export default function HelicopterPage() {
                             <td className="px-3 py-3">
                               {task.dueDate ? format(new Date(task.dueDate), "MMM d, yyyy") : "-"}
                             </td>
+                            <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                              {!task.board ? "N/A" : dependencyEditingTaskId === task.id ? (
+                                <form action={saveListDependencies} className="space-y-1">
+                                  <select name="dependency" multiple defaultValue={task.dependencies.map((dependency) => dependency.dependsOnTaskId)} className="min-h-20 w-44 rounded border bg-background p-1 text-xs">
+                                    {getSameBoardDependencyCandidates(task.id, task.board.id, tasks.map((item) => ({ id: item.id, boardId: item.board?.id ?? null }))).map((candidateId) => {
+                                      const candidate = tasks.find((item) => item.id === candidateId);
+                                      return candidate ? <option key={candidate.id} value={candidate.id}>{candidate.title}</option> : null;
+                                    })}
+                                  </select>
+                                  <div className="flex gap-1"><button className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground">Save</button><button type="button" onClick={() => setDependencyEditingTaskId(null)} className="rounded border px-2 py-1 text-xs">Cancel</button></div>
+                                </form>
+                              ) : <button type="button" onClick={() => setDependencyEditingTaskId(task.id)} className="text-left text-xs hover:underline">{task.dependencies.length ? task.dependencies.map((dependency) => tasks.find((item) => item.id === dependency.dependsOnTaskId)?.title).join(", ") : "None"}</button>}
+                            </td>
                           </tr>
                         ))}
                         {listTasks.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                            <td colSpan={8} className="px-3 py-6 text-center text-sm text-muted-foreground">
                               No tasks match current search/filter.
                             </td>
                           </tr>
