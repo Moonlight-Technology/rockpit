@@ -36,6 +36,7 @@ import {
 import { toTaskDatePayload } from "@/lib/task-date-payload";
 import { getSameBoardDependencyCandidates } from "@/lib/task-dependency-candidates";
 import { getValidTaskModalDependencyIds } from "@/lib/task-modal-dependencies";
+import { getTaskCreateForm } from "@/lib/task-create-form";
 
 type Task = {
   id: string;
@@ -140,15 +141,9 @@ export default function HelicopterPage() {
   const [taskModalSaving, setTaskModalSaving] = useState(false);
   const [taskModalDeleting, setTaskModalDeleting] = useState(false);
   const [taskModalDependencyIds, setTaskModalDependencyIds] = useState<string[]>([]);
-  const [taskForm, setTaskForm] = useState<TaskFormState>({
-    title: "",
-    description: "",
-    startDate: format(new Date(), "yyyy-MM-dd"),
-    dueDate: format(new Date(), "yyyy-MM-dd"),
-    priority: "MEDIUM",
-    boardId: "",
-    columnId: "",
-  });
+  const [taskForm, setTaskForm] = useState<TaskFormState>(() =>
+    getTaskCreateForm(format(new Date(), "yyyy-MM-dd")),
+  );
 
   const fetchTasks = async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
     if (showLoading) {
@@ -375,22 +370,17 @@ export default function HelicopterPage() {
     }));
   };
 
-  const openCreateTaskModal = () => {
+  const openCreateTaskModal = async (boardId = "") => {
     setModalMode("create");
     setSelectedTaskId(null);
     setTaskModalError(null);
     setColumnOptions([]);
     setTaskModalDependencyIds([]);
-    setTaskForm({
-      title: "",
-      description: "",
-      startDate: format(new Date(), "yyyy-MM-dd"),
-      dueDate: format(new Date(), "yyyy-MM-dd"),
-      priority: "MEDIUM",
-      boardId: "",
-      columnId: "",
-    });
+    setTaskForm(getTaskCreateForm(format(new Date(), "yyyy-MM-dd"), boardId));
     setShowTaskModal(true);
+    if (boardId) {
+      await loadColumnsForBoard(boardId);
+    }
   };
 
   const openEditTaskModal = async (task: Task) => {
@@ -588,7 +578,18 @@ export default function HelicopterPage() {
 
             <TabsContent value="critical-path" className="pt-2">
               <Card>
-                <CardHeader><CardTitle>Critical Path</CardTitle><CardDescription>Define same-board dependencies and see work that can run in parallel.</CardDescription></CardHeader>
+                <CardHeader>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <CardTitle>Critical Path</CardTitle>
+                      <CardDescription>Define same-board dependencies and see work that can run in parallel.</CardDescription>
+                    </div>
+                    <Button size="sm" disabled={!criticalBoardId} onClick={() => void openCreateTaskModal(criticalBoardId)}>
+                      <Plus data-icon="inline-start" />
+                      Add Task
+                    </Button>
+                  </div>
+                </CardHeader>
                 <CardContent className="space-y-4">
                   <select value={criticalBoardId} onChange={(event) => setCriticalBoardId(event.target.value)} className="h-10 w-full max-w-sm rounded-md border bg-background px-3 text-sm">
                     <option value="">Select a board</option>
@@ -607,7 +608,7 @@ export default function HelicopterPage() {
                       <CardTitle>All Tasks</CardTitle>
                       <CardDescription>Cross-board and standalone tasks.</CardDescription>
                     </div>
-                    <Button size="sm" onClick={openCreateTaskModal}>
+                    <Button size="sm" onClick={() => void openCreateTaskModal()}>
                       <Plus data-icon="inline-start" />
                       Add Task
                     </Button>
