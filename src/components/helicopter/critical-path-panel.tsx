@@ -10,6 +10,7 @@ import {
 } from "@/lib/critical-path";
 import { clampNetworkZoom, NETWORK_ZOOM_DEFAULT } from "@/lib/network-zoom";
 import { isNodeEditActivation } from "@/lib/network-node-interaction";
+import { getNetworkNodeStyle } from "@/lib/network-node-style";
 import {
   getVisibleNetworkTaskIds,
   type NetworkStatusFilter,
@@ -385,6 +386,7 @@ export function CriticalPathPanel({
                   const node = layout.nodes[task.id];
                   if (!node || !visibleNetworkTaskIds.has(task.id)) return null;
                   const critical = analysis.criticalTaskIds.has(task.id);
+                  const nodeStyle = getNetworkNodeStyle(task.status, critical);
                   return (
                     <g
                       key={task.id}
@@ -405,8 +407,8 @@ export function CriticalPathPanel({
                         width="190"
                         height="76"
                         rx="8"
-                        fill={critical ? "#fef2f2" : "white"}
-                        stroke={critical ? "#dc2626" : "#94a3b8"}
+                        fill={nodeStyle.fill}
+                        stroke={nodeStyle.stroke}
                         strokeWidth={critical ? 2 : 1}
                       />
                       <text x="12" y="27" fontSize="13" fontWeight="600">
@@ -418,9 +420,7 @@ export function CriticalPathPanel({
                           : "Missing dates"}
                       </text>
                       <text x="12" y="66" fontSize="11" fill="#64748b">
-                        {critical
-                          ? "Critical"
-                          : `${analysis.slackDaysByTaskId[task.id] ?? "-"} days slack`}
+                        {nodeStyle.detail ?? `${analysis.slackDaysByTaskId[task.id] ?? "-"} days slack`}
                       </text>
                     </g>
                   );
