@@ -35,6 +35,7 @@ import {
 } from "@/lib/helicopter-dashboard";
 import { toTaskDatePayload } from "@/lib/task-date-payload";
 import { getSameBoardDependencyCandidates } from "@/lib/task-dependency-candidates";
+import { getValidTaskModalDependencyIds } from "@/lib/task-modal-dependencies";
 
 type Task = {
   id: string;
@@ -138,6 +139,7 @@ export default function HelicopterPage() {
   const [taskModalError, setTaskModalError] = useState<string | null>(null);
   const [taskModalSaving, setTaskModalSaving] = useState(false);
   const [taskModalDeleting, setTaskModalDeleting] = useState(false);
+  const [taskModalDependencyIds, setTaskModalDependencyIds] = useState<string[]>([]);
   const [taskForm, setTaskForm] = useState<TaskFormState>({
     title: "",
     description: "",
@@ -231,6 +233,15 @@ export default function HelicopterPage() {
   const criticalTasks = useMemo(
     () => tasks.filter((task) => task.board?.id === criticalBoardId),
     [criticalBoardId, tasks]
+  );
+  const taskModalDependencyCandidates = useMemo(
+    () =>
+      getSameBoardDependencyCandidates(
+        selectedTaskId ?? "",
+        taskForm.boardId || null,
+        tasks.map((task) => ({ id: task.id, boardId: task.board?.id ?? null })),
+      ),
+    [selectedTaskId, taskForm.boardId, tasks],
   );
 
   const saveTaskDependencies = async (taskId: string, dependsOnTaskIds: string[]) => {
@@ -369,6 +380,7 @@ export default function HelicopterPage() {
     setSelectedTaskId(null);
     setTaskModalError(null);
     setColumnOptions([]);
+    setTaskModalDependencyIds([]);
     setTaskForm({
       title: "",
       description: "",
@@ -385,6 +397,16 @@ export default function HelicopterPage() {
     setModalMode("edit");
     setSelectedTaskId(task.id);
     setTaskModalError(null);
+    setTaskModalDependencyIds(
+      getValidTaskModalDependencyIds(
+        task.dependencies.map((dependency) => dependency.dependsOnTaskId),
+        getSameBoardDependencyCandidates(
+          task.id,
+          task.board?.id ?? null,
+          tasks.map((item) => ({ id: item.id, boardId: item.board?.id ?? null })),
+        ),
+      ),
+    );
     setTaskForm({
       title: task.title,
       description: task.description ?? "",
@@ -458,14 +480,32 @@ export default function HelicopterPage() {
             }),
           });
 
-    setTaskModalSaving(false);
     if (!response.ok) {
+      setTaskModalSaving(false);
       setTaskModalError(modalMode === "create" ? "Failed to create task." : "Failed to update task.");
       return;
     }
 
+    if (modalMode === "edit" && selectedTaskId) {
+      const dependencyResult = await saveTaskDependencies(
+        selectedTaskId,
+        getValidTaskModalDependencyIds(
+          taskModalDependencyIds,
+          taskModalDependencyCandidates,
+        ),
+      );
+      if (dependencyResult.error) {
+        setTaskModalSaving(false);
+        setTaskModalError(dependencyResult.error);
+        return;
+      }
+    }
+
+    setTaskModalSaving(false);
     closeTaskModal();
-    await fetchTasks({ showLoading: false });
+    if (modalMode === "create") {
+      await fetchTasks({ showLoading: false });
+    }
   };
 
   const deleteTaskFromModal = async () => {
@@ -944,6 +984,16 @@ export default function HelicopterPage() {
                   onChange={(event) => {
                     const nextBoardId = event.target.value;
                     setTaskForm((prev) => ({ ...prev, boardId: nextBoardId, columnId: "" }));
+                    setTaskModalDependencyIds((current) =>
+                      getValidTaskModalDependencyIds(
+                        current,
+                        getSameBoardDependencyCandidates(
+                          selectedTaskId ?? "",
+                          nextBoardId || null,
+                          tasks.map((task) => ({ id: task.id, boardId: task.board?.id ?? null })),
+                        ),
+                      ),
+                    );
                     void loadColumnsForBoard(nextBoardId);
                   }}
                   className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -973,6 +1023,37 @@ export default function HelicopterPage() {
                   ))}
                 </select>
               </div>
+              {modalMode === "edit" ? (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="task-dependencies">
+                    Dependencies
+                  </label>
+                  <select
+                    id="task-dependencies"
+                    multiple
+                    value={taskModalDependencyIds}
+                    onChange={(event) =>
+                      setTaskModalDependencyIds(
+                        Array.from(event.currentTarget.selectedOptions, (option) => option.value),
+                      )
+                    }
+                    disabled={!taskForm.boardId}
+                    className="min-h-24 w-full rounded-md border bg-background p-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {taskModalDependencyCandidates.map((candidateId) => {
+                      const candidate = tasks.find((task) => task.id === candidateId);
+                      return candidate ? (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.title}
+                        </option>
+                      ) : null;
+                    })}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Select one or more tasks in the same board that must finish first.
+                  </p>
+                </div>
+              ) : null}
 
               {taskModalError ? <p className="text-sm text-destructive">{taskModalError}</p> : null}
 
