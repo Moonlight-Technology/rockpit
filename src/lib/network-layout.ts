@@ -22,6 +22,18 @@ export function clampNetworkPosition({ x, y }: NetworkPosition): NetworkPosition
   };
 }
 
+export function getNetworkDragPosition(
+  node: NetworkPosition,
+  pointerStart: NetworkPosition,
+  pointerCurrent: NetworkPosition,
+  zoom: number,
+): NetworkPosition {
+  return clampNetworkPosition({
+    x: node.x + (pointerCurrent.x - pointerStart.x) / zoom,
+    y: node.y + (pointerCurrent.y - pointerStart.y) / zoom,
+  });
+}
+
 export function mergeNetworkNodePositions(
   autoNodes: Record<string, NetworkLayoutNode>,
   savedPositions: StoredNetworkPosition[],

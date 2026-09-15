@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clampNetworkPosition,
+  getNetworkDragPosition,
   isNetworkNodeDrag,
   mergeNetworkNodePositions,
 } from "@/lib/network-layout";
@@ -23,6 +24,17 @@ describe("network layout helpers", () => {
 
   it("clamps invalid drag coordinates", () => {
     expect(clampNetworkPosition({ x: -24, y: 90000 })).toEqual({ x: 0, y: 20000 });
+  });
+
+  it("calculates the final drop position from the pointer event at the active zoom", () => {
+    expect(
+      getNetworkDragPosition(
+        { x: 100, y: 200 },
+        { x: 20, y: 40 },
+        { x: 120, y: 90 },
+        2,
+      ),
+    ).toEqual({ x: 150, y: 225 });
   });
 
   it("only classifies movement of at least four pixels as a drag", () => {

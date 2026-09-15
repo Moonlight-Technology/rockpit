@@ -11,7 +11,7 @@ import {
 import { clampNetworkZoom, NETWORK_ZOOM_DEFAULT } from "@/lib/network-zoom";
 import { isNodeEditActivation } from "@/lib/network-node-interaction";
 import { getNetworkNodeStyle } from "@/lib/network-node-style";
-import { clampNetworkPosition, getNetworkCanvasBounds, isNetworkNodeDrag, mergeNetworkNodePositions, type NetworkPosition, type StoredNetworkPosition } from "@/lib/network-layout";
+import { getNetworkCanvasBounds, getNetworkDragPosition, isNetworkNodeDrag, mergeNetworkNodePositions, type NetworkPosition, type StoredNetworkPosition } from "@/lib/network-layout";
 import {
   getVisibleNetworkTaskIds,
   type NetworkStatusFilter,
@@ -432,8 +432,8 @@ export function CriticalPathPanel({
                       aria-label={`Edit ${task.title}`}
                       onClick={() => { if (!dragging) onEditTask(task.id); }}
                       onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setDragging({ taskId: task.id, pointer: { x: event.clientX, y: event.clientY }, node }); }}
-                      onPointerMove={(event) => { if (!dragging || dragging.taskId !== task.id) return; setTransientPositions((current) => ({ ...current, [task.id]: clampNetworkPosition({ x: dragging.node.x + (event.clientX - dragging.pointer.x) / networkZoom, y: dragging.node.y + (event.clientY - dragging.pointer.y) / networkZoom }) })); }}
-                      onPointerUp={(event) => { if (!dragging || dragging.taskId !== task.id) return; const position = transientPositions[task.id] ?? node; const moved = isNetworkNodeDrag(dragging.pointer, { x: event.clientX, y: event.clientY }); setDragging(null); if (!moved) return; void fetch(`/api/boards/${boardId}/network-layout/${task.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(position) }).then((response) => { if (!response.ok) { setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); setError("Failed to save node position."); return; } setSavedPositions((current) => [...current.filter((item) => item.taskId !== task.id), { taskId: task.id, ...position }]); setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); }); }}
+                      onPointerMove={(event) => { if (!dragging || dragging.taskId !== task.id) return; setTransientPositions((current) => ({ ...current, [task.id]: getNetworkDragPosition(dragging.node, dragging.pointer, { x: event.clientX, y: event.clientY }, networkZoom) })); }}
+                      onPointerUp={(event) => { if (!dragging || dragging.taskId !== task.id) return; const position = getNetworkDragPosition(dragging.node, dragging.pointer, { x: event.clientX, y: event.clientY }, networkZoom); const moved = isNetworkNodeDrag(dragging.pointer, { x: event.clientX, y: event.clientY }); setDragging(null); if (!moved) return; void fetch(`/api/boards/${boardId}/network-layout/${task.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(position) }).then((response) => { if (!response.ok) { setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); setError("Failed to save node position."); return; } setSavedPositions((current) => [...current.filter((item) => item.taskId !== task.id), { taskId: task.id, ...position }]); setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); }); }}
                       onKeyDown={(event) => {
                         if (isNodeEditActivation(event.key)) {
                           event.preventDefault();
