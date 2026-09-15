@@ -1,6 +1,7 @@
 import { BoardRole, Prisma, TaskPriority, WorkspaceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { hasDependencyCycle } from "@/lib/critical-path";
+import { clampNetworkPosition } from "@/lib/network-layout";
 
 const defaultColumns = ["To Do", "In Progress", "Done"];
 const DONE_COLUMN_TITLE = "done";
@@ -289,6 +290,45 @@ export async function canAccessBoard(userId: string, boardId: string) {
     select: { id: true },
   });
   return Boolean(board);
+}
+
+export async function listTaskNetworkPositionsForUser(input: { userId: string; boardId: string }) {
+  if (!(await canAccessBoard(input.userId, input.boardId))) return null;
+  return prisma.taskNetworkPosition.findMany({
+    where: { boardId: input.boardId },
+    select: { taskId: true, x: true, y: true },
+  });
+}
+
+export async function saveTaskNetworkPositionForUser(input: {
+  userId: string;
+  boardId: string;
+  taskId: string;
+  x: number;
+  y: number;
+}) {
+  if (!(await canAccessBoard(input.userId, input.boardId))) {
+    return { ok: false as const, code: "BOARD_NOT_FOUND" as const };
+  }
+  const task = await prisma.task.findFirst({
+    where: { id: input.taskId, boardId: input.boardId },
+    select: { id: true },
+  });
+  if (!task) return { ok: false as const, code: "TASK_NOT_IN_BOARD" as const };
+  const position = clampNetworkPosition(input);
+  const saved = await prisma.taskNetworkPosition.upsert({
+    where: { boardId_taskId: { boardId: input.boardId, taskId: input.taskId } },
+    create: { boardId: input.boardId, taskId: input.taskId, ...position },
+    update: position,
+    select: { taskId: true, x: true, y: true },
+  });
+  return { ok: true as const, position: saved };
+}
+
+export async function resetTaskNetworkPositionsForUser(input: { userId: string; boardId: string }) {
+  if (!(await canAccessBoard(input.userId, input.boardId))) return false;
+  await prisma.taskNetworkPosition.deleteMany({ where: { boardId: input.boardId } });
+  return true;
 }
 
 export async function getBoardDetailForUser(userId: string, boardId: string) {

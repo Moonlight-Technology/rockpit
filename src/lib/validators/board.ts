@@ -76,6 +76,11 @@ export const updateTaskDependenciesSchema = z.object({
   }),
 });
 
+export const updateTaskNetworkPositionSchema = z.object({
+  x: z.number().finite().int(),
+  y: z.number().finite().int(),
+});
+
 export const createStandaloneTaskSchema = z.object({
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(1000).optional().nullable(),
