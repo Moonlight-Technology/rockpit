@@ -150,6 +150,7 @@ model Board {
   members           BoardMember[]
   columns           BoardColumn[]
   tasks             Task[]
+  networkPositions  TaskNetworkPosition[]
   projectInfo       BoardProjectInfo?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
@@ -432,6 +433,7 @@ model Task {
   assignees              TaskAssignment[]
   dependencies           TaskDependency[] @relation("TaskDependencyTask")
   dependentTasks         TaskDependency[] @relation("TaskDependencyPrerequisite")
+  networkPositions       TaskNetworkPosition[]
   createdBy              User             @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt              DateTime         @default(now())
   updatedAt              DateTime         @updatedAt
@@ -451,6 +453,22 @@ model TaskDependency {
 
   @@unique([taskId, dependsOnTaskId])
   @@index([dependsOnTaskId])
+}
+
+model TaskNetworkPosition {
+  id        String   @id @default(cuid())
+  boardId   String
+  taskId    String
+  x         Int
+  y         Int
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([boardId, taskId])
+  @@index([boardId])
+  @@index([taskId])
 }
 
 model TaskAssignment {
