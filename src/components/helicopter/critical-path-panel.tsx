@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import {
   analyzeCriticalPath,
@@ -11,6 +11,7 @@ import {
 import { clampNetworkZoom, NETWORK_ZOOM_DEFAULT } from "@/lib/network-zoom";
 import { isNodeEditActivation } from "@/lib/network-node-interaction";
 import { getNetworkNodeStyle } from "@/lib/network-node-style";
+import { clampNetworkPosition, getNetworkCanvasBounds, isNetworkNodeDrag, mergeNetworkNodePositions, type NetworkPosition, type StoredNetworkPosition } from "@/lib/network-layout";
 import {
   getVisibleNetworkTaskIds,
   type NetworkStatusFilter,
@@ -32,6 +33,7 @@ export function CriticalPathPanel({
   onSave,
   onEditTask,
   onUpdateStatus,
+  boardId,
 }: {
   tasks: CriticalPathTask[];
   onSave: (
@@ -43,6 +45,7 @@ export function CriticalPathPanel({
     taskId: string,
     done: boolean,
   ) => Promise<{ error?: string }>;
+  boardId: string;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -57,6 +60,10 @@ export function CriticalPathPanel({
     direction: "asc",
   });
   const [statusSavingId, setStatusSavingId] = useState<string | null>(null);
+  const [savedPositions, setSavedPositions] = useState<StoredNetworkPosition[]>([]);
+  const [transientPositions, setTransientPositions] = useState<Record<string, NetworkPosition>>({});
+  const [dragging, setDragging] = useState<{ taskId: string; pointer: NetworkPosition; node: NetworkPosition } | null>(null);
+  const [resettingLayout, setResettingLayout] = useState(false);
   const edges = useMemo<DependencyEdge[]>(
     () =>
       tasks.flatMap((task) =>
@@ -75,6 +82,30 @@ export function CriticalPathPanel({
     () => buildNetworkLayout(tasks, edges),
     [tasks, edges],
   );
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`/api/boards/${boardId}/network-layout`)
+      .then((response) => response.json())
+      .then((result) => {
+        if (!cancelled && result?.ok) setSavedPositions(result.data);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Failed to load saved layout.");
+      });
+    return () => { cancelled = true; };
+  }, [boardId]);
+  const nodes = useMemo(() => {
+    const merged = mergeNetworkNodePositions(layout.nodes, savedPositions);
+    return Object.fromEntries(Object.entries(merged).map(([taskId, node]) => [taskId, transientPositions[taskId] ? { ...node, ...transientPositions[taskId] } : node]));
+  }, [layout.nodes, savedPositions, transientPositions]);
+  const canvasBounds = useMemo(() => getNetworkCanvasBounds(nodes), [nodes]);
+  const resetLayout = async () => {
+    setResettingLayout(true);
+    const response = await fetch(`/api/boards/${boardId}/network-layout`, { method: "DELETE" });
+    setResettingLayout(false);
+    if (!response.ok) { setError("Failed to reset layout."); return; }
+    setSavedPositions([]); setTransientPositions({});
+  };
   const taskById = useMemo(
     () => new Map(tasks.map((task) => [task.id, task])),
     [tasks],
@@ -323,6 +354,7 @@ export function CriticalPathPanel({
               >
                 Reset
               </button>
+              <button type="button" disabled={resettingLayout} onClick={() => void resetLayout()} className="ml-1 rounded border px-2 py-1 text-xs disabled:opacity-50">Reset layout</button>
             </div>
           </div>
           {tasks.length === 0 ? (
@@ -343,11 +375,11 @@ export function CriticalPathPanel({
               <svg
                 role="img"
                 aria-label="Task dependency network"
-                viewBox={`0 0 ${layout.width} ${layout.height}`}
+                viewBox={`0 0 ${canvasBounds.width} ${canvasBounds.height}`}
                 style={{
-                  width: `${Math.max(600, layout.width * networkZoom)}px`,
+                  width: `${Math.max(600, canvasBounds.width * networkZoom)}px`,
                   minWidth: "100%",
-                  height: `${Math.max(420, layout.height * networkZoom)}px`,
+                  height: `${Math.max(420, canvasBounds.height * networkZoom)}px`,
                 }}
                 className="block bg-slate-50"
               >
@@ -364,8 +396,8 @@ export function CriticalPathPanel({
                   </marker>
                 </defs>
                 {edges.map((edge) => {
-                  const from = layout.nodes[edge.dependsOnTaskId];
-                  const to = layout.nodes[edge.taskId];
+                  const from = nodes[edge.dependsOnTaskId];
+                  const to = nodes[edge.taskId];
                   if (!from || !to || !visibleNetworkTaskIds.has(edge.dependsOnTaskId) || !visibleNetworkTaskIds.has(edge.taskId)) return null;
                   const critical = analysis.criticalEdgeKeys.has(
                     `${edge.dependsOnTaskId}:${edge.taskId}`,
@@ -384,7 +416,7 @@ export function CriticalPathPanel({
                   );
                 })}
                 {tasks.map((task) => {
-                  const node = layout.nodes[task.id];
+                  const node = nodes[task.id];
                   if (!node || !visibleNetworkTaskIds.has(task.id)) return null;
                   const critical = analysis.criticalTaskIds.has(task.id);
                   const nodeStyle = getNetworkNodeStyle(
@@ -398,14 +430,17 @@ export function CriticalPathPanel({
                       role="button"
                       tabIndex={0}
                       aria-label={`Edit ${task.title}`}
-                      onClick={() => onEditTask(task.id)}
+                      onClick={() => { if (!dragging) onEditTask(task.id); }}
+                      onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setDragging({ taskId: task.id, pointer: { x: event.clientX, y: event.clientY }, node }); }}
+                      onPointerMove={(event) => { if (!dragging || dragging.taskId !== task.id) return; setTransientPositions((current) => ({ ...current, [task.id]: clampNetworkPosition({ x: dragging.node.x + (event.clientX - dragging.pointer.x) / networkZoom, y: dragging.node.y + (event.clientY - dragging.pointer.y) / networkZoom }) })); }}
+                      onPointerUp={(event) => { if (!dragging || dragging.taskId !== task.id) return; const position = transientPositions[task.id] ?? node; const moved = isNetworkNodeDrag(dragging.pointer, { x: event.clientX, y: event.clientY }); setDragging(null); if (!moved) return; void fetch(`/api/boards/${boardId}/network-layout/${task.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(position) }).then((response) => { if (!response.ok) { setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); setError("Failed to save node position."); return; } setSavedPositions((current) => [...current.filter((item) => item.taskId !== task.id), { taskId: task.id, ...position }]); setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); }); }}
                       onKeyDown={(event) => {
                         if (isNodeEditActivation(event.key)) {
                           event.preventDefault();
                           onEditTask(task.id);
                         }
                       }}
-                      className="cursor-pointer outline-none [&:focus_rect]:stroke-sky-500"
+                      className="cursor-move outline-none [&:focus_rect]:stroke-sky-500"
                       transform={`translate(${node.x},${node.y})`}
                     >
                       <rect

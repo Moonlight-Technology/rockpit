@@ -626,7 +626,7 @@ export default function HelicopterPage() {
                     <option value="">Select a board</option>
                     {boards.map((board) => <option key={board.id} value={board.id}>{board.title}</option>)}
                   </select>
-                  {criticalBoardId ? <CriticalPathPanel tasks={criticalTasks} onSave={saveTaskDependencies} onUpdateStatus={setTaskStatus} onEditTask={(taskId) => { const task = tasks.find((item) => item.id === taskId); if (task) void openEditTaskModal(task); }} /> : <p className="text-sm text-muted-foreground">Select a board to manage its dependency network.</p>}
+                  {criticalBoardId ? <CriticalPathPanel key={criticalBoardId} boardId={criticalBoardId} tasks={criticalTasks} onSave={saveTaskDependencies} onUpdateStatus={setTaskStatus} onEditTask={(taskId) => { const task = tasks.find((item) => item.id === taskId); if (task) void openEditTaskModal(task); }} /> : <p className="text-sm text-muted-foreground">Select a board to manage its dependency network.</p>}
                 </CardContent>
               </Card>
             </TabsContent>
