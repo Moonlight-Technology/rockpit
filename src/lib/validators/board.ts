@@ -65,7 +65,7 @@ export const updateTaskSchema = z.object({
 
 export const updateTaskScheduleSchema = z.object({
   plannedStartAt: z.string().datetime().nullable(),
-  plannedDurationMinutes: z.number().int().min(30).max(12 * 60).nullable().optional(),
+  plannedDurationMinutes: z.number().int().min(30).max(365 * 24 * 60).nullable().optional(),
 });
 
 export const updateTaskDependenciesSchema = z.object({

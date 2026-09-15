@@ -48,6 +48,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CriticalPathPanel } from "@/components/helicopter/critical-path-panel";
 import { TaskDatePickerPanel } from "@/components/task-date-picker-panel";
 import { toBoardCriticalPathTasks } from "@/lib/board-critical-path";
+import { filterDependencyPickerTasks } from "@/lib/dependency-picker";
 
 type Member = {
   id: string;
@@ -260,6 +261,7 @@ export default function BoardDetailPage() {
   const [cardEditError, setCardEditError] = useState<string | null>(null);
   const [isCriticalPathEdit, setIsCriticalPathEdit] = useState(false);
   const [criticalPathDependencyIds, setCriticalPathDependencyIds] = useState<string[]>([]);
+  const [criticalPathDependencySearchQuery, setCriticalPathDependencySearchQuery] = useState("");
   const [criticalPathDone, setCriticalPathDone] = useState(false);
 
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -332,6 +334,16 @@ export default function BoardDetailPage() {
   const criticalPathTasks = useMemo(
     () => toBoardCriticalPathTasks(allTasks),
     [allTasks],
+  );
+  const filteredCriticalPathDependencyTasks = useMemo(
+    () =>
+      filterDependencyPickerTasks(
+        criticalPathDependencySearchQuery,
+        allTasks
+          .filter((task) => task.id !== cardEditForm?.taskId)
+          .map((task) => ({ id: task.id, title: task.title })),
+      ),
+    [allTasks, cardEditForm?.taskId, criticalPathDependencySearchQuery],
   );
   const defaultTaskColumnIdForList =
     board?.columns.find((column) => !isDoneColumnTitle(column.title))?.id ??
@@ -772,6 +784,7 @@ export default function BoardDetailPage() {
   const openCardModal = (task: BoardTask) => {
     setIsCriticalPathEdit(false);
     setCriticalPathDependencyIds([]);
+    setCriticalPathDependencySearchQuery("");
     setCriticalPathDone(false);
     setCardEditError(null);
     setShowCardDueDatePicker(false);
@@ -810,6 +823,7 @@ export default function BoardDetailPage() {
     openCardModal(task);
     setIsCriticalPathEdit(true);
     setCriticalPathDependencyIds(task.dependencies.map((dependency) => dependency.dependsOnTaskId));
+    setCriticalPathDependencySearchQuery("");
     setCriticalPathDone(task.status === "DONE");
   };
 
@@ -2512,10 +2526,15 @@ export default function BoardDetailPage() {
                   <p className="mb-2 text-xs text-muted-foreground">
                     Select tasks that must finish before this task can start.
                   </p>
+                  <input
+                    type="search"
+                    value={criticalPathDependencySearchQuery}
+                    onChange={(event) => setCriticalPathDependencySearchQuery(event.target.value)}
+                    placeholder="Search tasks in this board..."
+                    className="mb-2 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  />
                   <div className="grid max-h-40 gap-2 overflow-y-auto sm:grid-cols-2">
-                    {allTasks
-                      .filter((task) => task.id !== cardEditForm.taskId)
-                      .map((task) => {
+                    {filteredCriticalPathDependencyTasks.map((task) => {
                         const checked = criticalPathDependencyIds.includes(task.id);
                         return (
                           <label key={task.id} className="flex items-center gap-2 text-sm">
@@ -2533,7 +2552,15 @@ export default function BoardDetailPage() {
                           </label>
                         );
                       })}
+                    {!filteredCriticalPathDependencyTasks.length ? (
+                      <p className="text-sm text-muted-foreground">No matching tasks.</p>
+                    ) : null}
                   </div>
+                  {criticalPathDependencyIds.length ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {criticalPathDependencyIds.length} task(s) selected as dependencies.
+                    </p>
+                  ) : null}
                   <label className="mt-3 flex items-center gap-2 text-sm font-medium">
                     <Checkbox
                       checked={criticalPathDone}
