@@ -45,7 +45,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CriticalPathPanel } from "@/components/helicopter/critical-path-panel";
 import { TaskDatePickerPanel } from "@/components/task-date-picker-panel";
+import { toBoardCriticalPathTasks } from "@/lib/board-critical-path";
 
 type Member = {
   id: string;
@@ -63,6 +65,8 @@ type BoardTask = {
   plannedStartAt: string | null;
   plannedDurationMinutes: number | null;
   priority: "LOW" | "MEDIUM" | "HIGH";
+  status: "TODO" | "DONE";
+  dependencies: Array<{ dependsOnTaskId: string }>;
   assignee: Member | null;
   assignees?: { user: Member }[];
   position: number;
@@ -254,6 +258,9 @@ export default function BoardDetailPage() {
   const [cardPickerSnapshot, setCardPickerSnapshot] = useState<CardPickerSnapshot | null>(null);
   const [cardEditForm, setCardEditForm] = useState<CardEditForm | null>(null);
   const [cardEditError, setCardEditError] = useState<string | null>(null);
+  const [isCriticalPathEdit, setIsCriticalPathEdit] = useState(false);
+  const [criticalPathDependencyIds, setCriticalPathDependencyIds] = useState<string[]>([]);
+  const [criticalPathDone, setCriticalPathDone] = useState(false);
 
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSettingsDueDatePicker, setShowSettingsDueDatePicker] = useState(false);
@@ -263,7 +270,7 @@ export default function BoardDetailPage() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [activeViewTab, setActiveViewTab] = useState<"board" | "list" | "timeline" | "calendar">(
+  const [activeViewTab, setActiveViewTab] = useState<"board" | "list" | "timeline" | "calendar" | "critical-path">(
     "board"
   );
   const [memberEmail, setMemberEmail] = useState("");
@@ -322,6 +329,10 @@ export default function BoardDetailPage() {
     }))
   );
   const doneColumnId = board?.columns.find((column) => isDoneColumnTitle(column.title))?.id ?? null;
+  const criticalPathTasks = useMemo(
+    () => toBoardCriticalPathTasks(allTasks),
+    [allTasks],
+  );
   const defaultTaskColumnIdForList =
     board?.columns.find((column) => !isDoneColumnTitle(column.title))?.id ??
     board?.columns[0]?.id ??
@@ -759,6 +770,9 @@ export default function BoardDetailPage() {
   };
 
   const openCardModal = (task: BoardTask) => {
+    setIsCriticalPathEdit(false);
+    setCriticalPathDependencyIds([]);
+    setCriticalPathDone(false);
     setCardEditError(null);
     setShowCardDueDatePicker(false);
     setCardDatePickerTarget("due");
@@ -788,6 +802,40 @@ export default function BoardDetailPage() {
     setCardPickerSnapshot(takeCardPickerSnapshot(nextForm));
     setShowCardModal(true);
     setShowCardDueDatePicker(true);
+  };
+
+  const openCriticalPathTaskModal = (taskId: string) => {
+    const task = allTasks.find((item) => item.id === taskId);
+    if (!task) return;
+    openCardModal(task);
+    setIsCriticalPathEdit(true);
+    setCriticalPathDependencyIds(task.dependencies.map((dependency) => dependency.dependsOnTaskId));
+    setCriticalPathDone(task.status === "DONE");
+  };
+
+  const saveCriticalPathDependencies = async (taskId: string, dependsOnTaskIds: string[]) => {
+    const response = await fetch(`/api/tasks/${taskId}/dependencies`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dependsOnTaskIds }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.ok) {
+      return { error: result?.error ?? "Failed to update dependencies." };
+    }
+    await fetchBoard();
+    return {};
+  };
+
+  const updateCriticalPathTaskStatus = async (taskId: string, done: boolean) => {
+    const response = await fetch(`/api/tasks/${taskId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: done ? "DONE" : "TODO" }),
+    });
+    if (!response.ok) return { error: "Failed to update task status." };
+    await fetchBoard();
+    return {};
   };
 
   const saveCardEdit = async () => {
@@ -870,17 +918,40 @@ export default function BoardDetailPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(schedulePayload),
     });
-    setSaving(false);
 
     if (!scheduleResponse.ok) {
+      setSaving(false);
       setCardEditError("Task saved, but failed to update time range.");
       return;
     }
 
+    if (isCriticalPathEdit) {
+      const dependencyResult = await saveCriticalPathDependencies(
+        cardEditForm.taskId,
+        criticalPathDependencyIds,
+      );
+      if (dependencyResult.error) {
+        setSaving(false);
+        setCardEditError(dependencyResult.error);
+        return;
+      }
+      const statusResult = await updateCriticalPathTaskStatus(
+        cardEditForm.taskId,
+        criticalPathDone,
+      );
+      if (statusResult.error) {
+        setSaving(false);
+        setCardEditError(statusResult.error);
+        return;
+      }
+    }
+
+    setSaving(false);
     setShowCardModal(false);
     setShowCardDueDatePicker(false);
     setCardPickerSnapshot(null);
     setCardEditForm(null);
+    setIsCriticalPathEdit(false);
     await fetchBoard();
   };
 
@@ -906,6 +977,7 @@ export default function BoardDetailPage() {
     setShowCardDueDatePicker(false);
     setCardPickerSnapshot(null);
     setCardEditForm(null);
+    setIsCriticalPathEdit(false);
     await fetchBoard();
   };
 
@@ -1257,7 +1329,7 @@ export default function BoardDetailPage() {
         <Tabs
           value={activeViewTab}
           onValueChange={(value) =>
-            setActiveViewTab(value as "board" | "list" | "timeline" | "calendar")
+            setActiveViewTab(value as "board" | "list" | "timeline" | "calendar" | "critical-path")
           }
           className="w-full gap-4"
         >
@@ -1267,6 +1339,7 @@ export default function BoardDetailPage() {
               <TabsTrigger value="list">List</TabsTrigger>
               <TabsTrigger value="timeline">Timeline</TabsTrigger>
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
+              <TabsTrigger value="critical-path">Critical Path</TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-1.5">
               <Button
@@ -1510,6 +1583,35 @@ export default function BoardDetailPage() {
               </CardContent>
             </Card>
             </section>
+          </TabsContent>
+
+          <TabsContent value="critical-path" className="pt-2">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <CardTitle>Critical Path</CardTitle>
+                    <CardDescription>
+                      Define dependencies and identify work that can run in parallel.
+                    </CardDescription>
+                  </div>
+                  <Button size="sm" onClick={openAddTaskFromList} disabled={!defaultTaskColumnIdForList}>
+                    <Plus data-icon="inline-start" />
+                    Add Task
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <CriticalPathPanel
+                  key={board.id}
+                  boardId={board.id}
+                  tasks={criticalPathTasks}
+                  onSave={saveCriticalPathDependencies}
+                  onUpdateStatus={updateCriticalPathTaskStatus}
+                  onEditTask={openCriticalPathTaskModal}
+                />
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="list" className="pt-2">
@@ -2402,6 +2504,45 @@ export default function BoardDetailPage() {
                   })}
                 </div>
               </div>
+              {isCriticalPathEdit ? (
+                <div className="rounded-md border bg-background p-2">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Dependencies
+                  </p>
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Select tasks that must finish before this task can start.
+                  </p>
+                  <div className="grid max-h-40 gap-2 overflow-y-auto sm:grid-cols-2">
+                    {allTasks
+                      .filter((task) => task.id !== cardEditForm.taskId)
+                      .map((task) => {
+                        const checked = criticalPathDependencyIds.includes(task.id);
+                        return (
+                          <label key={task.id} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(value) =>
+                                setCriticalPathDependencyIds((current) =>
+                                  value === true
+                                    ? [...current, task.id]
+                                    : current.filter((id) => id !== task.id),
+                                )
+                              }
+                            />
+                            <span>{task.title}</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                  <label className="mt-3 flex items-center gap-2 text-sm font-medium">
+                    <Checkbox
+                      checked={criticalPathDone}
+                      onCheckedChange={(value) => setCriticalPathDone(value === true)}
+                    />
+                    Mark task as done
+                  </label>
+                </div>
+              ) : null}
               {cardEditError ? <p className="text-sm text-destructive">{cardEditError}</p> : null}
               <div className="mt-1 flex items-center justify-between gap-2">
                 <Button variant="destructive" onClick={deleteCardTask} disabled={saving}>
@@ -2415,6 +2556,7 @@ export default function BoardDetailPage() {
                     setShowCardDueDatePicker(false);
                     setCardPickerSnapshot(null);
                     setCardEditForm(null);
+                    setIsCriticalPathEdit(false);
                   }}
                 >
                   Close

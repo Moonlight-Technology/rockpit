@@ -68,6 +68,9 @@ const boardDetailInclude = {
               },
             },
           },
+          dependencies: {
+            select: { dependsOnTaskId: true },
+          },
         },
       },
     },
