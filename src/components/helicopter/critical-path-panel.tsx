@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export type CriticalPathTask = DependencyTask & {
   dependencies: Array<{ dependsOnTaskId: string }>;
+  column: { title: string } | null;
 };
 
 export function CriticalPathPanel({
@@ -386,7 +387,11 @@ export function CriticalPathPanel({
                   const node = layout.nodes[task.id];
                   if (!node || !visibleNetworkTaskIds.has(task.id)) return null;
                   const critical = analysis.criticalTaskIds.has(task.id);
-                  const nodeStyle = getNetworkNodeStyle(task.status, critical);
+                  const nodeStyle = getNetworkNodeStyle(
+                    task.status,
+                    critical,
+                    task.column?.title.trim().toLowerCase() === "in progress",
+                  );
                   return (
                     <g
                       key={task.id}

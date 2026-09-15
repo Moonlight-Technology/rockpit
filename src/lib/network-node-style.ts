@@ -1,12 +1,21 @@
 export function getNetworkNodeStyle(
   status: "TODO" | "DONE",
   critical: boolean,
+  inProgress = false,
 ) {
   if (status === "DONE") {
     return {
       fill: "#f0fdf4",
       stroke: "#16a34a",
       detail: "Done",
+    };
+  }
+
+  if (inProgress) {
+    return {
+      fill: "#fff7ed",
+      stroke: "#ea580c",
+      detail: "In progress",
     };
   }
 

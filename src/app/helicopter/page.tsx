@@ -37,6 +37,7 @@ import { toTaskDatePayload } from "@/lib/task-date-payload";
 import { getSameBoardDependencyCandidates } from "@/lib/task-dependency-candidates";
 import { getValidTaskModalDependencyIds } from "@/lib/task-modal-dependencies";
 import { getTaskCreateForm } from "@/lib/task-create-form";
+import { filterDependencyPickerTasks } from "@/lib/dependency-picker";
 
 type Task = {
   id: string;
@@ -141,6 +142,9 @@ export default function HelicopterPage() {
   const [taskModalSaving, setTaskModalSaving] = useState(false);
   const [taskModalDeleting, setTaskModalDeleting] = useState(false);
   const [taskModalDependencyIds, setTaskModalDependencyIds] = useState<string[]>([]);
+  const [taskModalDone, setTaskModalDone] = useState(false);
+  const [taskModalInitialDone, setTaskModalInitialDone] = useState(false);
+  const [dependencySearchQuery, setDependencySearchQuery] = useState("");
   const [taskForm, setTaskForm] = useState<TaskFormState>(() =>
     getTaskCreateForm(format(new Date(), "yyyy-MM-dd")),
   );
@@ -237,6 +241,18 @@ export default function HelicopterPage() {
         tasks.map((task) => ({ id: task.id, boardId: task.board?.id ?? null })),
       ),
     [selectedTaskId, taskForm.boardId, tasks],
+  );
+  const taskModalDependencyTasks = useMemo(
+    () =>
+      taskModalDependencyCandidates.flatMap((candidateId) => {
+        const candidate = tasks.find((task) => task.id === candidateId);
+        return candidate ? [{ id: candidate.id, title: candidate.title }] : [];
+      }),
+    [taskModalDependencyCandidates, tasks],
+  );
+  const filteredTaskModalDependencyTasks = useMemo(
+    () => filterDependencyPickerTasks(dependencySearchQuery, taskModalDependencyTasks),
+    [dependencySearchQuery, taskModalDependencyTasks],
   );
 
   const saveTaskDependencies = async (taskId: string, dependsOnTaskIds: string[]) => {
@@ -376,6 +392,9 @@ export default function HelicopterPage() {
     setTaskModalError(null);
     setColumnOptions([]);
     setTaskModalDependencyIds([]);
+    setTaskModalDone(false);
+    setTaskModalInitialDone(false);
+    setDependencySearchQuery("");
     setTaskForm(getTaskCreateForm(format(new Date(), "yyyy-MM-dd"), boardId));
     setShowTaskModal(true);
     if (boardId) {
@@ -387,6 +406,9 @@ export default function HelicopterPage() {
     setModalMode("edit");
     setSelectedTaskId(task.id);
     setTaskModalError(null);
+    setTaskModalDone(task.status === "DONE");
+    setTaskModalInitialDone(task.status === "DONE");
+    setDependencySearchQuery("");
     setTaskModalDependencyIds(
       getValidTaskModalDependencyIds(
         task.dependencies.map((dependency) => dependency.dependsOnTaskId),
@@ -488,6 +510,15 @@ export default function HelicopterPage() {
         setTaskModalSaving(false);
         setTaskModalError(dependencyResult.error);
         return;
+      }
+
+      if (taskModalDone !== taskModalInitialDone) {
+        const statusResult = await setTaskStatus(selectedTaskId, taskModalDone);
+        if (statusResult.error) {
+          setTaskModalSaving(false);
+          setTaskModalError(statusResult.error);
+          return;
+        }
       }
     }
 
@@ -979,6 +1010,15 @@ export default function HelicopterPage() {
                   <option value="HIGH">HIGH</option>
                 </select>
               </div>
+              {modalMode === "edit" ? (
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <Checkbox
+                    checked={taskModalDone}
+                    onCheckedChange={(checked) => setTaskModalDone(checked === true)}
+                  />
+                  Mark as done
+                </label>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <select
                   value={taskForm.boardId}
@@ -1029,29 +1069,50 @@ export default function HelicopterPage() {
                   <label className="text-sm font-medium" htmlFor="task-dependencies">
                     Dependencies
                   </label>
-                  <select
+                  <input
                     id="task-dependencies"
-                    multiple
-                    value={taskModalDependencyIds}
-                    onChange={(event) =>
-                      setTaskModalDependencyIds(
-                        Array.from(event.currentTarget.selectedOptions, (option) => option.value),
-                      )
-                    }
+                    type="search"
+                    value={dependencySearchQuery}
+                    onChange={(event) => setDependencySearchQuery(event.target.value)}
+                    placeholder="Search tasks in this board..."
                     disabled={!taskForm.boardId}
-                    className="min-h-24 w-full rounded-md border bg-background p-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {taskModalDependencyCandidates.map((candidateId) => {
-                      const candidate = tasks.find((task) => task.id === candidateId);
-                      return candidate ? (
-                        <option key={candidate.id} value={candidate.id}>
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                  <div className="max-h-48 overflow-y-auto rounded-md border bg-background">
+                    {filteredTaskModalDependencyTasks.map((candidate) => {
+                      const selected = taskModalDependencyIds.includes(candidate.id);
+                      return (
+                        <label
+                          key={candidate.id}
+                          className="flex cursor-pointer items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-muted/50"
+                        >
+                          <Checkbox
+                            checked={selected}
+                            onCheckedChange={(checked) =>
+                              setTaskModalDependencyIds((current) =>
+                                checked === true
+                                  ? [...current, candidate.id]
+                                  : current.filter((id) => id !== candidate.id),
+                              )
+                            }
+                          />
                           {candidate.title}
-                        </option>
-                      ) : null;
+                        </label>
+                      );
                     })}
-                  </select>
+                    {!filteredTaskModalDependencyTasks.length ? (
+                      <p className="px-3 py-3 text-sm text-muted-foreground">
+                        {taskForm.boardId ? "No matching tasks." : "Select a board first."}
+                      </p>
+                    ) : null}
+                  </div>
+                  {taskModalDependencyIds.length ? (
+                    <p className="text-xs text-muted-foreground">
+                      {taskModalDependencyIds.length} task(s) selected as dependencies.
+                    </p>
+                  ) : null}
                   <p className="text-xs text-muted-foreground">
-                    Select one or more tasks in the same board that must finish first.
+                    Select tasks that must finish before this task can start.
                   </p>
                 </div>
               ) : null}

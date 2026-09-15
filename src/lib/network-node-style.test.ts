@@ -9,4 +9,12 @@ describe("getNetworkNodeStyle", () => {
       detail: "Done",
     });
   });
+
+  it("uses the in-progress style for an open task in the In Progress column", () => {
+    expect(getNetworkNodeStyle("TODO", true, true)).toEqual({
+      fill: "#fff7ed",
+      stroke: "#ea580c",
+      detail: "In progress",
+    });
+  });
 });
