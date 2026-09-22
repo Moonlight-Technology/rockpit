@@ -16,3 +16,14 @@ export function createNetworkNodeClickGuard() {
     },
   };
 }
+
+export function addNetworkDependency(
+  sourceTaskId: string,
+  targetTaskId: string,
+  targetDependencyIds: string[],
+) {
+  if (sourceTaskId === targetTaskId || targetDependencyIds.includes(sourceTaskId)) {
+    return null;
+  }
+  return [...targetDependencyIds, sourceTaskId];
+}

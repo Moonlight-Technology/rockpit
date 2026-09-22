@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addNetworkDependency,
   createNetworkNodeClickGuard,
   isNodeEditActivation,
 } from "@/lib/network-node-interaction";
@@ -20,5 +21,19 @@ describe("network node click guard", () => {
     guard.recordDrag();
     expect(guard.shouldOpenEditor()).toBe(false);
     expect(guard.shouldOpenEditor()).toBe(true);
+  });
+});
+
+describe("addNetworkDependency", () => {
+  it("adds the source task once as a prerequisite of the target", () => {
+    expect(addNetworkDependency("task-a", "task-b", ["task-c"])).toEqual([
+      "task-c",
+      "task-a",
+    ]);
+  });
+
+  it("rejects self-links and existing dependencies", () => {
+    expect(addNetworkDependency("task-a", "task-a", [])).toBeNull();
+    expect(addNetworkDependency("task-a", "task-b", ["task-a"])).toBeNull();
   });
 });

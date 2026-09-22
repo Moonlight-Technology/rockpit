@@ -5,11 +5,13 @@ import { format } from "date-fns";
 import {
   analyzeCriticalPath,
   buildNetworkLayout,
+  getDependencyCandidateIds,
   type DependencyEdge,
   type DependencyTask,
 } from "@/lib/critical-path";
 import { clampNetworkZoom, NETWORK_ZOOM_DEFAULT } from "@/lib/network-zoom";
 import {
+  addNetworkDependency,
   createNetworkNodeClickGuard,
   isNodeEditActivation,
 } from "@/lib/network-node-interaction";
@@ -66,6 +68,11 @@ export function CriticalPathPanel({
   const [savedPositions, setSavedPositions] = useState<StoredNetworkPosition[]>([]);
   const [transientPositions, setTransientPositions] = useState<Record<string, NetworkPosition>>({});
   const [dragging, setDragging] = useState<{ taskId: string; pointer: NetworkPosition; node: NetworkPosition } | null>(null);
+  const [connecting, setConnecting] = useState<{
+    fromTaskId: string;
+    pointer: NetworkPosition;
+  } | null>(null);
+  const [connectionTargetId, setConnectionTargetId] = useState<string | null>(null);
   const [resettingLayout, setResettingLayout] = useState(false);
   const nodeClickGuardRef = useRef(createNetworkNodeClickGuard());
   const edges = useMemo<DependencyEdge[]>(
@@ -122,6 +129,33 @@ export function CriticalPathPanel({
     () => filterAndSortDependencyTasks(tasks, statusFilter, tableSort),
     [statusFilter, tableSort, tasks],
   );
+
+  const saveNetworkDependency = async (fromTaskId: string, targetTaskId: string) => {
+    const targetTask = taskById.get(targetTaskId);
+    if (!targetTask) return;
+    const nextDependencies = addNetworkDependency(
+      fromTaskId,
+      targetTaskId,
+      targetTask.dependencies.map((dependency) => dependency.dependsOnTaskId),
+    );
+    if (!nextDependencies) return;
+
+    const allowedSourceIds = getDependencyCandidateIds(
+      targetTaskId,
+      tasks.map((task) => task.id),
+      edges,
+    );
+    if (!allowedSourceIds.has(fromTaskId)) {
+      setError("This dependency would create a cycle.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    const result = await onSave(targetTaskId, nextDependencies);
+    setSaving(false);
+    if (result.error) setError(result.error);
+  };
 
   const save = async (formData: FormData) => {
     if (!editingId) return;
@@ -380,6 +414,30 @@ export function CriticalPathPanel({
                 role="img"
                 aria-label="Task dependency network"
                 viewBox={`0 0 ${canvasBounds.width} ${canvasBounds.height}`}
+                onPointerMove={(event) => {
+                  if (!connecting) return;
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  const targetId = document
+                    .elementFromPoint(event.clientX, event.clientY)
+                    ?.closest("[data-network-task-id]")
+                    ?.getAttribute("data-network-task-id");
+                  setConnectionTargetId(targetId ?? null);
+                  setConnecting((current) =>
+                    current
+                      ? {
+                          ...current,
+                          pointer: {
+                            x: ((event.clientX - bounds.left) / bounds.width) * canvasBounds.width,
+                            y: ((event.clientY - bounds.top) / bounds.height) * canvasBounds.height,
+                          },
+                        }
+                      : current,
+                  );
+                }}
+                onPointerUp={() => {
+                  setConnecting(null);
+                  setConnectionTargetId(null);
+                }}
                 style={{
                   width: `${Math.max(600, canvasBounds.width * networkZoom)}px`,
                   minWidth: "100%",
@@ -419,6 +477,18 @@ export function CriticalPathPanel({
                     />
                   );
                 })}
+                {connecting && nodes[connecting.fromTaskId] ? (
+                  <line
+                    x1={nodes[connecting.fromTaskId].x + 190}
+                    y1={nodes[connecting.fromTaskId].y + 38}
+                    x2={connecting.pointer.x}
+                    y2={connecting.pointer.y}
+                    stroke="#2563eb"
+                    strokeWidth="2"
+                    strokeDasharray="6 4"
+                    markerEnd="url(#arrow)"
+                  />
+                ) : null}
                 {tasks.map((task) => {
                   const node = nodes[task.id];
                   if (!node || !visibleNetworkTaskIds.has(task.id)) return null;
@@ -431,6 +501,7 @@ export function CriticalPathPanel({
                   return (
                     <g
                       key={task.id}
+                      data-network-task-id={task.id}
                       role="button"
                       tabIndex={0}
                       aria-label={`Edit ${task.title}`}
@@ -441,7 +512,7 @@ export function CriticalPathPanel({
                       }}
                       onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setDragging({ taskId: task.id, pointer: { x: event.clientX, y: event.clientY }, node }); }}
                       onPointerMove={(event) => { if (!dragging || dragging.taskId !== task.id) return; setTransientPositions((current) => ({ ...current, [task.id]: getNetworkDragPosition(dragging.node, dragging.pointer, { x: event.clientX, y: event.clientY }, networkZoom) })); }}
-                      onPointerUp={(event) => { if (!dragging || dragging.taskId !== task.id) return; const position = getNetworkDragPosition(dragging.node, dragging.pointer, { x: event.clientX, y: event.clientY }, networkZoom); const moved = isNetworkNodeDrag(dragging.pointer, { x: event.clientX, y: event.clientY }); if (moved) nodeClickGuardRef.current.recordDrag(); setDragging(null); if (!moved) return; void fetch(`/api/boards/${boardId}/network-layout/${task.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(position) }).then((response) => { if (!response.ok) { setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); setError("Failed to save node position."); return; } setSavedPositions((current) => [...current.filter((item) => item.taskId !== task.id), { taskId: task.id, ...position }]); setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); }); }}
+                      onPointerUp={(event) => { if (connecting) { const fromTaskId = connecting.fromTaskId; setConnecting(null); setConnectionTargetId(null); if (fromTaskId !== task.id) void saveNetworkDependency(fromTaskId, task.id); return; } if (!dragging || dragging.taskId !== task.id) return; const position = getNetworkDragPosition(dragging.node, dragging.pointer, { x: event.clientX, y: event.clientY }, networkZoom); const moved = isNetworkNodeDrag(dragging.pointer, { x: event.clientX, y: event.clientY }); if (moved) nodeClickGuardRef.current.recordDrag(); setDragging(null); if (!moved) return; void fetch(`/api/boards/${boardId}/network-layout/${task.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(position) }).then((response) => { if (!response.ok) { setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); setError("Failed to save node position."); return; } setSavedPositions((current) => [...current.filter((item) => item.taskId !== task.id), { taskId: task.id, ...position }]); setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); }); }}
                       onKeyDown={(event) => {
                         if (isNodeEditActivation(event.key)) {
                           event.preventDefault();
@@ -456,8 +527,8 @@ export function CriticalPathPanel({
                         height="76"
                         rx="8"
                         fill={nodeStyle.fill}
-                        stroke={nodeStyle.stroke}
-                        strokeWidth={critical ? 2 : 1}
+                        stroke={connectionTargetId === task.id ? "#2563eb" : nodeStyle.stroke}
+                        strokeWidth={connectionTargetId === task.id ? 3 : critical ? 2 : 1}
                       />
                       <text x="12" y="27" fontSize="13" fontWeight="600">
                         {task.title.slice(0, 24)}
@@ -470,6 +541,26 @@ export function CriticalPathPanel({
                       <text x="12" y="66" fontSize="11" fill="#64748b">
                         {nodeStyle.detail ?? `${analysis.slackDaysByTaskId[task.id] ?? "-"} days slack`}
                       </text>
+                      <circle
+                        cx="190"
+                        cy="38"
+                        r="8"
+                        fill="#2563eb"
+                        stroke="#ffffff"
+                        strokeWidth="2"
+                        aria-label={`Connect ${task.title} to another task`}
+                        className="cursor-crosshair"
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          nodeClickGuardRef.current.recordDrag();
+                          setConnectionTargetId(null);
+                          setConnecting({
+                            fromTaskId: task.id,
+                            pointer: { x: node.x + 190, y: node.y + 38 },
+                          });
+                        }}
+                      />
                     </g>
                   );
                 })}
