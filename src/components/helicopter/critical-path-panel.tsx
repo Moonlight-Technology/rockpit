@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import {
   analyzeCriticalPath,
@@ -9,7 +9,10 @@ import {
   type DependencyTask,
 } from "@/lib/critical-path";
 import { clampNetworkZoom, NETWORK_ZOOM_DEFAULT } from "@/lib/network-zoom";
-import { isNodeEditActivation } from "@/lib/network-node-interaction";
+import {
+  createNetworkNodeClickGuard,
+  isNodeEditActivation,
+} from "@/lib/network-node-interaction";
 import { getNetworkNodeStyle } from "@/lib/network-node-style";
 import { getNetworkCanvasBounds, getNetworkDragPosition, isNetworkNodeDrag, mergeNetworkNodePositions, type NetworkPosition, type StoredNetworkPosition } from "@/lib/network-layout";
 import {
@@ -64,6 +67,7 @@ export function CriticalPathPanel({
   const [transientPositions, setTransientPositions] = useState<Record<string, NetworkPosition>>({});
   const [dragging, setDragging] = useState<{ taskId: string; pointer: NetworkPosition; node: NetworkPosition } | null>(null);
   const [resettingLayout, setResettingLayout] = useState(false);
+  const nodeClickGuardRef = useRef(createNetworkNodeClickGuard());
   const edges = useMemo<DependencyEdge[]>(
     () =>
       tasks.flatMap((task) =>
@@ -430,10 +434,14 @@ export function CriticalPathPanel({
                       role="button"
                       tabIndex={0}
                       aria-label={`Edit ${task.title}`}
-                      onClick={() => { if (!dragging) onEditTask(task.id); }}
+                      onClick={() => {
+                        if (nodeClickGuardRef.current.shouldOpenEditor()) {
+                          onEditTask(task.id);
+                        }
+                      }}
                       onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setDragging({ taskId: task.id, pointer: { x: event.clientX, y: event.clientY }, node }); }}
                       onPointerMove={(event) => { if (!dragging || dragging.taskId !== task.id) return; setTransientPositions((current) => ({ ...current, [task.id]: getNetworkDragPosition(dragging.node, dragging.pointer, { x: event.clientX, y: event.clientY }, networkZoom) })); }}
-                      onPointerUp={(event) => { if (!dragging || dragging.taskId !== task.id) return; const position = getNetworkDragPosition(dragging.node, dragging.pointer, { x: event.clientX, y: event.clientY }, networkZoom); const moved = isNetworkNodeDrag(dragging.pointer, { x: event.clientX, y: event.clientY }); setDragging(null); if (!moved) return; void fetch(`/api/boards/${boardId}/network-layout/${task.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(position) }).then((response) => { if (!response.ok) { setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); setError("Failed to save node position."); return; } setSavedPositions((current) => [...current.filter((item) => item.taskId !== task.id), { taskId: task.id, ...position }]); setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); }); }}
+                      onPointerUp={(event) => { if (!dragging || dragging.taskId !== task.id) return; const position = getNetworkDragPosition(dragging.node, dragging.pointer, { x: event.clientX, y: event.clientY }, networkZoom); const moved = isNetworkNodeDrag(dragging.pointer, { x: event.clientX, y: event.clientY }); if (moved) nodeClickGuardRef.current.recordDrag(); setDragging(null); if (!moved) return; void fetch(`/api/boards/${boardId}/network-layout/${task.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(position) }).then((response) => { if (!response.ok) { setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); setError("Failed to save node position."); return; } setSavedPositions((current) => [...current.filter((item) => item.taskId !== task.id), { taskId: task.id, ...position }]); setTransientPositions((current) => { const next = { ...current }; delete next[task.id]; return next; }); }); }}
                       onKeyDown={(event) => {
                         if (isNodeEditActivation(event.key)) {
                           event.preventDefault();
