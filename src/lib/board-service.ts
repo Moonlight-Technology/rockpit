@@ -48,7 +48,7 @@ const boardDetailInclude = {
   members: {
     include: {
       user: {
-        select: { id: true, name: true, email: true, avatarUrl: true },
+        select: { id: true, name: true, email: true, avatarUrl: true, avatarColor: true },
       },
     },
   },
@@ -59,12 +59,12 @@ const boardDetailInclude = {
         orderBy: { position: "asc" },
         include: {
           assignee: {
-            select: { id: true, name: true, email: true, avatarUrl: true },
+            select: { id: true, name: true, email: true, avatarUrl: true, avatarColor: true },
           },
           assignees: {
             include: {
               user: {
-                select: { id: true, name: true, email: true, avatarUrl: true },
+                select: { id: true, name: true, email: true, avatarUrl: true, avatarColor: true },
               },
             },
           },

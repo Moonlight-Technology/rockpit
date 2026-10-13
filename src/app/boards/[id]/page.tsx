@@ -48,6 +48,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CriticalPathPanel } from "@/components/helicopter/critical-path-panel";
 import { TaskDatePickerPanel } from "@/components/task-date-picker-panel";
 import { toBoardCriticalPathTasks } from "@/lib/board-critical-path";
+import { getAvatarBackgroundColor } from "@/lib/avatar-color";
 import { filterDependencyPickerTasks } from "@/lib/dependency-picker";
 
 type Member = {
@@ -55,6 +56,7 @@ type Member = {
   name: string;
   email: string;
   avatarUrl?: string | null;
+  avatarColor?: string | null;
 };
 
 type BoardTask = {
@@ -1325,7 +1327,10 @@ export default function BoardDetailPage() {
                   title={`${member.name} (${member.email})`}
                   className="flex items-center gap-2 rounded-full border bg-background px-2 py-1"
                 >
-                  <span className="grid size-7 place-items-center overflow-hidden rounded-full bg-muted text-xs font-semibold">
+                  <span
+                    className="grid size-7 place-items-center overflow-hidden rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: getAvatarBackgroundColor(member.avatarColor) }}
+                  >
                     {member.avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={member.avatarUrl} alt={member.name} className="size-full object-cover" />
@@ -1516,7 +1521,8 @@ export default function BoardDetailPage() {
                               <div
                                 key={member.id}
                                 title={member.name}
-                                className="size-6 overflow-hidden rounded-full border-2 border-background bg-muted"
+                                className="size-6 overflow-hidden rounded-full border-2 border-background"
+                                style={{ backgroundColor: getAvatarBackgroundColor(member.avatarColor) }}
                               >
                                 {member.avatarUrl ? (
                                   // eslint-disable-next-line @next/next/no-img-element
@@ -1526,7 +1532,7 @@ export default function BoardDetailPage() {
                                     className="size-full object-cover"
                                   />
                                 ) : (
-                                  <span className="grid size-full place-items-center text-[10px] font-semibold">
+                                  <span className="grid size-full place-items-center text-[10px] font-semibold text-white">
                                     {getInitials(member.name)}
                                   </span>
                                 )}

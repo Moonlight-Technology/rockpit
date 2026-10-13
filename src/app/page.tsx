@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { format } from "date-fns";
-import { Plus, PlaneTakeoff, CalendarDays, Menu, WalletCards } from "lucide-react";
+import { Plus, PlaneTakeoff, CalendarDays, Menu, WalletCards, CircleUserRound, LogOut } from "lucide-react";
 import { CompanyModeMenu } from "@/components/company/company-mode-menu";
 import { CompanyUnlockDialog } from "@/components/company/company-unlock-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type Task = {
   id: string;
@@ -614,9 +621,23 @@ export default function Home() {
               Helicopter View
             </Button>
             <Badge variant="secondary">{format(new Date(), "EEEE, MMM d")}</Badge>
-            <Button size="sm" variant="outline" onClick={() => signOut({ callbackUrl: "/login" })}>
-              Sign Out
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button size="sm" variant="outline" />}>
+                <CircleUserRound data-icon="inline-start" />
+                Account
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => router.push("/profile")}>
+                  <CircleUserRound />
+                  Profile
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => void signOut({ callbackUrl: "/login" })}>
+                  <LogOut />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           <div className="relative md:hidden">
             {showMobileMenu ? (
@@ -689,9 +710,22 @@ export default function Home() {
                     className="w-full justify-start"
                     onClick={() => {
                       setShowMobileMenu(false);
+                      router.push("/profile");
+                    }}
+                  >
+                    <CircleUserRound data-icon="inline-start" />
+                    Profile
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setShowMobileMenu(false);
                       void signOut({ callbackUrl: "/login" });
                     }}
                   >
+                    <LogOut data-icon="inline-start" />
                     Sign Out
                   </Button>
                 </CardContent>
