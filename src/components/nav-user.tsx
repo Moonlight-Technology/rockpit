@@ -1,9 +1,11 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+
 import {
   Avatar,
   AvatarFallback,
-  AvatarImage,
 } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -28,10 +30,33 @@ export function NavUser({
   user: {
     name: string
     email: string
-    avatar: string
+    avatarColor: string
   }
 }) {
   const { isMobile } = useSidebar()
+  const router = useRouter()
+  const [currentUser, setCurrentUser] = useState(user)
+
+  useEffect(() => {
+    void fetch("/api/profile")
+      .then(async (response) => (response.ok ? response.json() : null))
+      .then((result) => {
+        if (result?.data?.name && result?.data?.email && result?.data?.avatarColor) {
+          setCurrentUser(result.data)
+        }
+      })
+      .catch(() => undefined)
+  }, [])
+
+  const initials = currentUser.name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "?"
+
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -41,14 +66,13 @@ export function NavUser({
               <SidebarMenuButton size="lg" className="aria-expanded:bg-muted" />
             }
           >
-            <Avatar className="size-8 rounded-lg grayscale">
-              <AvatarImage src={user.avatar} alt={user.name} />
-              <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+            <Avatar className="size-8 rounded-lg" style={{ backgroundColor: currentUser.avatarColor, color: "#fff" }}>
+              <AvatarFallback className="rounded-lg bg-transparent font-medium text-inherit">{initials}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">{user.name}</span>
+              <span className="truncate font-medium">{currentUser.name}</span>
               <span className="truncate text-xs text-foreground/70">
-                {user.email}
+                {currentUser.email}
               </span>
             </div>
             <EllipsisVerticalIcon className="ml-auto size-4" />
@@ -62,14 +86,13 @@ export function NavUser({
             <DropdownMenuGroup>
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <Avatar className="size-8">
-                    <AvatarImage src={user.avatar} alt={user.name} />
-                    <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                  <Avatar className="size-8" style={{ backgroundColor: currentUser.avatarColor, color: "#fff" }}>
+                    <AvatarFallback className="rounded-lg bg-transparent font-medium text-inherit">{initials}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">{user.name}</span>
+                    <span className="truncate font-medium">{currentUser.name}</span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {user.email}
+                      {currentUser.email}
                     </span>
                   </div>
                 </div>
@@ -77,7 +100,7 @@ export function NavUser({
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/profile")}>
                 <CircleUserRoundIcon
                 />
                 Account

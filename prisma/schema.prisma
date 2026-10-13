@@ -109,6 +109,7 @@ model User {
   email              String                   @unique
   name               String
   avatarUrl          String?
+  avatarColor        String                   @default("#E76F51")
   passwordHash       String
   premiumUnlock      UserPremiumUnlock?
   boardsOwned        Board[]                  @relation("BoardOwner")

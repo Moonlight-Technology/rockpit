@@ -1,0 +1,2 @@
+ALTER TABLE "public"."User"
+  ADD COLUMN "avatarColor" TEXT NOT NULL DEFAULT '#E76F51';
